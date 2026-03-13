@@ -1,0 +1,288 @@
+<?php
+// admin/products.php
+require_once '_layout.php';
+adminHeader('Quản lý sản phẩm');
+
+$msg = '';
+
+// DELETE
+if (isset($_GET['delete'])) {
+    $id = (int)$_GET['delete'];
+    // Check if product has been imported
+    $has_import = $conn->query("SELECT COUNT(*) as c FROM import_details WHERE product_id=$id")->fetch_assoc()['c'];
+    if ($has_import > 0) {
+        $conn->query("UPDATE products SET status='hidden' WHERE id=$id");
+        $msg = '<div class="alert alert-info">Sản phẩm đã được nhập hàng, đã ẩn sản phẩm.</div>';
+    } else {
+        $conn->query("DELETE FROM products WHERE id=$id");
+        $msg = '<div class="alert alert-success">Đã xóa sản phẩm.</div>';
+    }
+}
+
+// SAVE (add/edit)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $code        = sanitize($conn, $_POST['code'] ?? '');
+    $name        = sanitize($conn, $_POST['name'] ?? '');
+    $cat_id      = (int)$_POST['category_id'];
+    $desc        = sanitize($conn, $_POST['description'] ?? '');
+    $unit        = sanitize($conn, $_POST['unit'] ?? 'đôi');
+    $stock       = (int)$_POST['stock_quantity'];
+    $profit_rate = (float)$_POST['profit_rate'];
+    $status      = sanitize($conn, $_POST['status'] ?? 'active');
+    $image       = '';
+
+    if (!$code || !$name || !$cat_id) {
+        $msg = '<div class="alert alert-danger">Vui lòng điền đầy đủ thông tin bắt buộc.</div>';
+    } else {
+        // Handle image upload
+        if (!empty($_FILES['image']['name'])) {
+            $ext = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg','jpeg','png','gif','webp'])) {
+                $msg = '<div class="alert alert-danger">Định dạng ảnh không hợp lệ.</div>';
+                goto end_save;
+            }
+            $filename = uniqid('sp_') . '.' . $ext;
+            move_uploaded_file($_FILES['image']['tmp_name'], '../uploads/' . $filename);
+            $image = $filename;
+        }
+
+        if ($_POST['action'] === 'add') {
+            $check = $conn->query("SELECT id FROM products WHERE code='$code'");
+            if ($check->num_rows > 0) {
+                $msg = '<div class="alert alert-danger">Mã sản phẩm đã tồn tại.</div>';
+            } else {
+                $conn->query("INSERT INTO products (code,name,category_id,description,unit,stock_quantity,profit_rate,image,status) VALUES ('$code','$name',$cat_id,'$desc','$unit',$stock,$profit_rate,'$image','$status')");
+                $msg = '<div class="alert alert-success">Đã thêm sản phẩm thành công.</div>';
+                $_POST = [];
+            }
+        } elseif ($_POST['action'] === 'edit') {
+            $id = (int)$_POST['id'];
+            $img_sql = $image ? ", image='$image'" : '';
+            // Check remove image
+            if (isset($_POST['remove_image']) && $_POST['remove_image'] == '1') {
+                $img_sql = ", image=''";
+            }
+            $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',profit_rate=$profit_rate,status='$status'$img_sql WHERE id=$id");
+            $msg = '<div class="alert alert-success">Đã cập nhật sản phẩm.</div>';
+        }
+        end_save:;
+    }
+}
+
+$edit_p = null;
+if (isset($_GET['edit'])) {
+    $id = (int)$_GET['edit'];
+    $edit_p = $conn->query("SELECT * FROM products WHERE id=$id")->fetch_assoc();
+}
+
+$categories = $conn->query("SELECT * FROM categories ORDER BY name");
+
+// List with filters
+$filter_cat = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+$filter_status = isset($_GET['status']) ? sanitize($conn, $_GET['status']) : '';
+$where = "1=1";
+if ($filter_cat > 0) $where .= " AND p.category_id=$filter_cat";
+if ($filter_status) $where .= " AND p.status='$filter_status'";
+
+$products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price FROM products p JOIN categories c ON p.category_id=c.id WHERE $where ORDER BY p.created_at DESC");
+?>
+
+<?= $msg ?>
+
+<?php if ($edit_p): ?>
+<!-- Edit Form -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header fw-bold bg-white border-0">
+        <i class="bi bi-pencil me-2"></i>Sửa sản phẩm: <?= htmlspecialchars($edit_p['name']) ?>
+        <a href="products.php" class="btn btn-sm btn-outline-secondary float-end">Hủy</a>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="id" value="<?= $edit_p['id'] ?>">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Mã SP <span class="text-danger">*</span></label>
+                    <input type="text" name="code" class="form-control" value="<?= htmlspecialchars($edit_p['code']) ?>" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
+                    <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($edit_p['name']) ?>" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Danh mục <span class="text-danger">*</span></label>
+                    <select name="category_id" class="form-select" required>
+                        <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
+                        <option value="<?= $c['id'] ?>" <?= $edit_p['category_id']==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['name']) ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Mô tả</label>
+                    <textarea name="description" class="form-control" rows="2"><?= htmlspecialchars($edit_p['description']) ?></textarea>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Đơn vị</label>
+                    <input type="text" name="unit" class="form-control" value="<?= htmlspecialchars($edit_p['unit']) ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">% Lợi nhuận</label>
+                    <div class="input-group">
+                        <input type="number" name="profit_rate" class="form-control" value="<?= $edit_p['profit_rate'] ?>" step="0.01" min="0">
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Hiện trạng</label>
+                    <select name="status" class="form-select">
+                        <option value="active" <?= $edit_p['status']=='active'?'selected':'' ?>>Hiển thị (đang bán)</option>
+                        <option value="hidden" <?= $edit_p['status']=='hidden'?'selected':'' ?>>Ẩn (không bán)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Ảnh mới</label>
+                    <input type="file" name="image" class="form-control" accept="image/*">
+                    <?php if ($edit_p['image']): ?>
+                    <div class="mt-2 d-flex align-items-center gap-2">
+                        <img src="../uploads/<?= htmlspecialchars($edit_p['image']) ?>" width="50" height="50" style="object-fit:cover;border-radius:4px">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="remove_image" value="1" id="removeImg">
+                            <label class="form-check-label small text-danger" for="removeImg">Bỏ ảnh</label>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-save me-1"></i>Lưu thay đổi</button>
+                <a href="products.php" class="btn btn-outline-secondary">Hủy</a>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Add Form (collapsed) -->
+<?php if (!$edit_p): ?>
+<div class="mb-4">
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#addForm">
+        <i class="bi bi-plus-circle me-2"></i>Thêm sản phẩm mới
+    </button>
+</div>
+<div class="collapse mb-4" id="addForm">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header fw-bold bg-white border-0"><i class="bi bi-plus me-2"></i>Thêm sản phẩm</div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="add">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Mã SP <span class="text-danger">*</span></label>
+                        <input type="text" name="code" class="form-control" value="<?= htmlspecialchars($_POST['code'] ?? '') ?>" required>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Danh mục <span class="text-danger">*</span></label>
+                        <select name="category_id" class="form-select" required>
+                            <option value="">-- Chọn danh mục --</option>
+                            <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
+                            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Mô tả</label>
+                        <textarea name="description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Đơn vị</label>
+                        <input type="text" name="unit" class="form-control" value="đôi">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">SL ban đầu</label>
+                        <input type="number" name="stock_quantity" class="form-control" value="0" min="0">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">% Lợi nhuận</label>
+                        <div class="input-group">
+                            <input type="number" name="profit_rate" class="form-control" value="30" step="0.01" min="0">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Hình ảnh</label>
+                        <input type="file" name="image" class="form-control" accept="image/*">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Thêm sản phẩm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Filters + List -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-list-ul me-2"></i>Danh sách sản phẩm</strong>
+        <form class="d-flex gap-2" method="GET">
+            <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Tất cả danh mục</option>
+                <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
+                <option value="<?= $c['id'] ?>" <?= $filter_cat==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['name']) ?></option>
+                <?php endwhile; ?>
+            </select>
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Tất cả</option>
+                <option value="active" <?= $filter_status=='active'?'selected':'' ?>>Đang bán</option>
+                <option value="hidden" <?= $filter_status=='hidden'?'selected':'' ?>>Đã ẩn</option>
+            </select>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Mã</th><th>Sản phẩm</th><th>Danh mục</th><th class="text-end">Giá vốn</th><th class="text-end">Giá bán</th><th class="text-center">Tồn kho</th><th class="text-center">Trạng thái</th><th class="text-center">Thao tác</th></tr>
+            </thead>
+            <tbody>
+                <?php while ($p = $products->fetch_assoc()): ?>
+                <tr>
+                    <td class="small text-muted"><?= htmlspecialchars($p['code']) ?></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <?php if ($p['image'] && file_exists('../uploads/'.$p['image'])): ?>
+                            <img src="../uploads/<?= htmlspecialchars($p['image']) ?>" width="40" height="40" style="object-fit:cover;border-radius:6px">
+                            <?php endif; ?>
+                            <span class="fw-semibold"><?= htmlspecialchars($p['name']) ?></span>
+                        </div>
+                    </td>
+                    <td class="small"><?= htmlspecialchars($p['cat_name']) ?></td>
+                    <td class="text-end small"><?= formatPrice($p['import_price']) ?></td>
+                    <td class="text-end small fw-bold" style="color:#ff6b35"><?= formatPrice($p['sell_price']) ?></td>
+                    <td class="text-center">
+                        <span class="badge bg-<?= $p['stock_quantity'] == 0 ? 'danger' : ($p['stock_quantity'] <= 5 ? 'warning' : 'success') ?>">
+                            <?= $p['stock_quantity'] ?>
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-<?= $p['status']=='active' ? 'success' : 'secondary' ?>">
+                            <?= $p['status'] == 'active' ? 'Đang bán' : 'Ẩn' ?>
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <a href="products.php?edit=<?= $p['id'] ?>" class="btn btn-sm btn-outline-warning me-1" title="Sửa"><i class="bi bi-pencil"></i></a>
+                        <a href="products.php?delete=<?= $p['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Xóa/ẩn sản phẩm này?')" title="Xóa"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php adminFooter(); ?>
