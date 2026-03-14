@@ -78,4 +78,33 @@ function adminFooter() {
     echo '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>';
     echo '</body></html>';
 }
+
+// Pagination helper — renders Bootstrap pagination links
+// $total: total records, $page: current page, $per_page: records per page
+// $params: existing GET params to preserve (array), adds &page=N automatically
+function renderPagination($total, $page, $per_page, $params = []) {
+    $total_pages = ceil($total / $per_page);
+    if ($total_pages <= 1) return '';
+
+    unset($params['page']);
+    $qs = $params ? '&' . http_build_query($params) : '';
+
+    $html = '<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center mb-0">';
+    // Prev
+    $html .= '<li class="page-item ' . ($page<=1?'disabled':'') . '">';
+    $html .= '<a class="page-link" href="?page=' . ($page-1) . $qs . '">‹</a></li>';
+    // Pages — show max 7 with ellipsis
+    $start = max(1, $page-3); $end = min($total_pages, $page+3);
+    if ($start > 1) $html .= '<li class="page-item disabled"><span class="page-link">…</span></li>';
+    for ($i = $start; $i <= $end; $i++) {
+        $html .= '<li class="page-item ' . ($i==$page?'active':'') . '">';
+        $html .= '<a class="page-link" href="?page=' . $i . $qs . '">' . $i . '</a></li>';
+    }
+    if ($end < $total_pages) $html .= '<li class="page-item disabled"><span class="page-link">…</span></li>';
+    // Next
+    $html .= '<li class="page-item ' . ($page>=$total_pages?'disabled':'') . '">';
+    $html .= '<a class="page-link" href="?page=' . ($page+1) . $qs . '">›</a></li>';
+    $html .= '</ul></nav>';
+    return $html;
+}
 ?>

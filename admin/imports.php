@@ -80,10 +80,18 @@ if ($edit_id) {
     $edit_receipt = $conn->query("SELECT * FROM import_receipts WHERE id=$edit_id")->fetch_assoc();
 }
 
-// List receipts with search
-$search = isset($_GET['search']) ? sanitize($conn, $_GET['search']) : '';
-$where = $search ? "WHERE receipt_code LIKE '%$search%'" : "";
-$receipts = $conn->query("SELECT ir.*, u.full_name FROM import_receipts ir JOIN users u ON ir.created_by=u.id $where ORDER BY ir.created_at DESC");
+// List receipts with search + pagination
+$search_i   = isset($_GET['search']) ? sanitize($conn, $_GET['search']) : '';
+$filter_ist = isset($_GET['ist'])    ? sanitize($conn, $_GET['ist']) : '';
+$page_i     = max(1, (int)($_GET['page'] ?? 1));
+$per_page_i = 12;
+$where_i    = "1=1";
+if ($search_i)   $where_i .= " AND (ir.receipt_code LIKE '%$search_i%' OR u.full_name LIKE '%$search_i%')";
+if ($filter_ist) $where_i .= " AND ir.status='$filter_ist'";
+$total_i  = $conn->query("SELECT COUNT(*) as c FROM import_receipts ir JOIN users u ON ir.created_by=u.id WHERE $where_i")->fetch_assoc()['c'];
+$offset_i = ($page_i - 1) * $per_page_i;
+$receipts = $conn->query("SELECT ir.*, u.full_name FROM import_receipts ir JOIN users u ON ir.created_by=u.id WHERE $where_i ORDER BY ir.created_at DESC LIMIT $per_page_i OFFSET $offset_i");
+$params_i = array_filter(['search'=>$search_i,'ist'=>$filter_ist]);
 
 $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='active' ORDER BY name");
 ?>
@@ -213,12 +221,25 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
 
 <!-- Receipts list -->
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-bold border-0 d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-list-ul me-2"></i>Danh sách phiếu nhập</span>
-        <form method="GET" class="d-flex gap-2">
-            <input type="text" name="search" class="form-control form-control-sm" placeholder="Tìm theo mã phiếu..." value="<?= htmlspecialchars($search) ?>">
-            <button class="btn btn-sm btn-outline-secondary">Tìm</button>
-        </form>
+    <div class="card-header bg-white border-0">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-list-ul me-2"></i>Danh sách phiếu nhập <span class="badge bg-secondary"><?= $total_i ?></span></strong>
+            <form method="GET" class="d-flex gap-2 flex-wrap">
+                <div class="input-group input-group-sm" style="width:220px">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="search" class="form-control" placeholder="Tìm mã phiếu, người tạo..." value="<?= htmlspecialchars($search_i) ?>">
+                </div>
+                <select name="ist" class="form-select form-select-sm" style="width:150px" onchange="this.form.submit()">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="pending"   <?= $filter_ist==='pending'?'selected':'' ?>>Chưa hoàn thành</option>
+                    <option value="completed" <?= $filter_ist==='completed'?'selected':'' ?>>Đã hoàn thành</option>
+                </select>
+                <button class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Tìm</button>
+                <?php if ($search_i || $filter_ist): ?>
+                <a href="imports.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
+                <?php endif; ?>
+            </form>
+        </div>
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -226,6 +247,9 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                 <tr><th>Mã phiếu</th><th>Ngày nhập</th><th>Người tạo</th><th>Ghi chú</th><th class="text-center">Trạng thái</th><th class="text-center">Thao tác</th></tr>
             </thead>
             <tbody>
+                <?php if ($receipts->num_rows === 0): ?>
+                <tr><td colspan="6" class="text-center text-muted py-4">Không tìm thấy phiếu nhập nào.</td></tr>
+                <?php endif; ?>
                 <?php while ($r = $receipts->fetch_assoc()): ?>
                 <tr>
                     <td class="fw-semibold"><?= htmlspecialchars($r['receipt_code']) ?></td>
@@ -233,8 +257,8 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                     <td><?= htmlspecialchars($r['full_name']) ?></td>
                     <td class="text-muted small"><?= htmlspecialchars($r['notes']) ?></td>
                     <td class="text-center">
-                        <span class="badge bg-<?= $r['status']=='completed' ? 'success' : 'warning' ?>">
-                            <?= $r['status']=='completed' ? 'Đã hoàn thành' : 'Chưa xong' ?>
+                        <span class="badge bg-<?= $r['status']==='completed' ? 'success' : 'warning' ?>">
+                            <?= $r['status']==='completed' ? 'Đã hoàn thành' : 'Chưa xong' ?>
                         </span>
                     </td>
                     <td class="text-center">
@@ -248,6 +272,14 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
             </tbody>
         </table>
     </div>
+    <?php if ($total_i > $per_page_i): ?>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">Hiển thị <?= min($offset_i+1,$total_i) ?>–<?= min($offset_i+$per_page_i,$total_i) ?> / <?= $total_i ?> phiếu nhập</small>
+            <?= renderPagination($total_i, $page_i, $per_page_i, $params_i) ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php adminFooter(); ?>

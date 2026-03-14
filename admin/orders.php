@@ -46,18 +46,25 @@ $statusLabels = ['pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','de
 $statusColors = ['pending'=>'warning','confirmed'=>'info','delivered'=>'success','cancelled'=>'danger'];
 
 // Filters
-$filter_status = isset($_GET['status']) ? sanitize($conn, $_GET['status']) : '';
+$filter_status = isset($_GET['status'])    ? sanitize($conn, $_GET['status']) : '';
 $date_from     = isset($_GET['date_from']) ? sanitize($conn, $_GET['date_from']) : '';
-$date_to       = isset($_GET['date_to']) ? sanitize($conn, $_GET['date_to']) : '';
+$date_to       = isset($_GET['date_to'])   ? sanitize($conn, $_GET['date_to']) : '';
 $sort_ward     = isset($_GET['sort_ward']) ? 1 : 0;
+$search_o      = isset($_GET['q'])         ? sanitize($conn, $_GET['q']) : '';
+$page_o        = max(1, (int)($_GET['page'] ?? 1));
+$per_page_o    = 15;
 
 $where = "1=1";
 if ($filter_status) $where .= " AND o.status='$filter_status'";
-if ($date_from) $where .= " AND DATE(o.created_at) >= '$date_from'";
-if ($date_to)   $where .= " AND DATE(o.created_at) <= '$date_to'";
+if ($date_from)     $where .= " AND DATE(o.created_at) >= '$date_from'";
+if ($date_to)       $where .= " AND DATE(o.created_at) <= '$date_to'";
+if ($search_o)      $where .= " AND (o.order_code LIKE '%$search_o%' OR u.full_name LIKE '%$search_o%' OR o.receiver_phone LIKE '%$search_o%')";
 
-$order_by = $sort_ward ? "o.ward, o.district" : "o.created_at DESC";
-$orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id WHERE $where ORDER BY $order_by");
+$order_by  = $sort_ward ? "o.ward, o.district" : "o.created_at DESC";
+$total_o   = $conn->query("SELECT COUNT(*) as c FROM orders o JOIN users u ON o.user_id=u.id WHERE $where")->fetch_assoc()['c'];
+$offset_o  = ($page_o - 1) * $per_page_o;
+$orders    = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id WHERE $where ORDER BY $order_by LIMIT $per_page_o OFFSET $offset_o");
+$params_o  = array_filter(['q'=>$search_o,'status'=>$filter_status,'date_from'=>$date_from,'date_to'=>$date_to,'sort_ward'=>$sort_ward?1:null]);
 
 // Detail view
 $detail_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -145,33 +152,36 @@ if ($detail_id) {
 <?php else: ?>
 <!-- Order list with filters -->
 <div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <form method="GET" class="row g-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="q" class="form-control" placeholder="Mã đơn, tên KH, SĐT..." value="<?= htmlspecialchars($search_o) ?>">
+                </div>
+            </div>
             <div class="col-md-2">
-                <label class="form-label small">Trạng thái</label>
                 <select name="status" class="form-select form-select-sm">
-                    <option value="">Tất cả</option>
+                    <option value="">Tất cả TT</option>
                     <?php foreach ($statusLabels as $k=>$v): ?>
                     <option value="<?= $k ?>" <?= $filter_status==$k?'selected':'' ?>><?= $v ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label small">Từ ngày</label>
+            <div class="col-md-2">
                 <input type="date" name="date_from" class="form-control form-control-sm" value="<?= $date_from ?>">
             </div>
-            <div class="col-md-3">
-                <label class="form-label small">Đến ngày</label>
+            <div class="col-md-2">
                 <input type="date" name="date_to" class="form-control form-control-sm" value="<?= $date_to ?>">
             </div>
-            <div class="col-md-2 d-flex align-items-end gap-2">
-                <button class="btn btn-primary btn-sm">Lọc</button>
-                <a href="orders.php" class="btn btn-outline-secondary btn-sm">Reset</a>
+            <div class="col-md-2 d-flex gap-1">
+                <button class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Lọc</button>
+                <a href="orders.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <div class="form-check">
+            <div class="col-md-1 d-flex align-items-center">
+                <div class="form-check mb-0">
                     <input class="form-check-input" type="checkbox" name="sort_ward" value="1" id="sortWard" <?= $sort_ward?'checked':'' ?> onchange="this.form.submit()">
-                    <label class="form-check-label small" for="sortWard">Sắp xếp theo phường</label>
+                    <label class="form-check-label small" for="sortWard">Theo phường</label>
                 </div>
             </div>
         </form>
@@ -180,7 +190,7 @@ if ($detail_id) {
 
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white fw-bold border-0">
-        <i class="bi bi-bag-check me-2"></i>Danh sách đơn hàng (<?= $orders->num_rows ?>)
+        <i class="bi bi-bag-check me-2"></i>Danh sách đơn hàng <span class="badge bg-secondary"><?= $total_o ?></span>
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -190,6 +200,9 @@ if ($detail_id) {
             <tbody>
                 <?php
                 $pm_short = ['cash'=>'COD','transfer'=>'CK','online'=>'Online'];
+                if ($orders->num_rows === 0): ?>
+                <tr><td colspan="8" class="text-center text-muted py-4">Không tìm thấy đơn hàng nào.</td></tr>
+                <?php endif;
                 while ($o = $orders->fetch_assoc()):
                 ?>
                 <tr>
@@ -203,13 +216,21 @@ if ($detail_id) {
                     </td>
                     <td class="small text-muted"><?= date('d/m/Y H:i', strtotime($o['created_at'])) ?></td>
                     <td class="text-center">
-                        <a href="orders.php?id=<?= $o['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                        <a href="orders.php?id=<?= $o['id'] ?>&<?= http_build_query($params_o) ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                     </td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>
         </table>
     </div>
+    <?php if ($total_o > $per_page_o): ?>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">Hiển thị <?= min($offset_o+1,$total_o) ?>–<?= min($offset_o+$per_page_o,$total_o) ?> / <?= $total_o ?> đơn hàng</small>
+            <?= renderPagination($total_o, $page_o, $per_page_o, $params_o) ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 

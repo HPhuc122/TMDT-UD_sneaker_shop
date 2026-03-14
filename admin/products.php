@@ -94,14 +94,25 @@ if (isset($_GET['edit'])) {
 
 $categories = $conn->query("SELECT * FROM categories ORDER BY name");
 
-// List with filters
-$filter_cat = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+// List with filters + pagination + search
+$filter_cat    = isset($_GET['cat'])    ? (int)$_GET['cat'] : 0;
 $filter_status = isset($_GET['status']) ? sanitize($conn, $_GET['status']) : '';
-$where = "1=1";
-if ($filter_cat > 0) $where .= " AND p.category_id=$filter_cat";
-if ($filter_status) $where .= " AND p.status='$filter_status'";
+$search_p      = isset($_GET['q'])      ? sanitize($conn, $_GET['q']) : '';
+$page_p        = max(1, (int)($_GET['page'] ?? 1));
+$per_page_p    = 15;
 
-$products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price FROM products p JOIN categories c ON p.category_id=c.id WHERE $where ORDER BY p.created_at DESC");
+$where = "1=1";
+if ($filter_cat > 0)  $where .= " AND p.category_id=$filter_cat";
+if ($filter_status)   $where .= " AND p.status='$filter_status'";
+if ($search_p !== '')  $where .= " AND (p.name LIKE '%$search_p%' OR p.code LIKE '%$search_p%' OR p.brand LIKE '%$search_p%')";
+
+$total_p = $conn->query("SELECT COUNT(*) as c FROM products p WHERE $where")->fetch_assoc()['c'];
+$offset_p = ($page_p - 1) * $per_page_p;
+$products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price
+    FROM products p JOIN categories c ON p.category_id=c.id
+    WHERE $where ORDER BY p.created_at DESC
+    LIMIT $per_page_p OFFSET $offset_p");
+$params_p = array_filter(['q'=>$search_p,'cat'=>$filter_cat,'status'=>$filter_status]);
 ?>
 
 <?= $msg ?>
@@ -339,21 +350,28 @@ function updateSizeLabel(cb){
 
 <!-- Filters + List -->
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <strong><i class="bi bi-list-ul me-2"></i>Danh sách sản phẩm</strong>
-        <form class="d-flex gap-2" method="GET">
-            <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">Tất cả danh mục</option>
-                <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
-                <option value="<?= $c['id'] ?>" <?= $filter_cat==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['name']) ?></option>
-                <?php endwhile; ?>
-            </select>
-            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">Tất cả</option>
-                <option value="active" <?= $filter_status=='active'?'selected':'' ?>>Đang bán</option>
-                <option value="hidden" <?= $filter_status=='hidden'?'selected':'' ?>>Đã ẩn</option>
-            </select>
-        </form>
+    <div class="card-header bg-white border-0">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-list-ul me-2"></i>Danh sách sản phẩm <span class="badge bg-secondary"><?= $total_p ?></span></strong>
+            <form class="d-flex gap-2 flex-wrap" method="GET">
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="Tìm tên, mã, thương hiệu..." value="<?= htmlspecialchars($search_p) ?>" style="width:200px">
+                <select name="cat" class="form-select form-select-sm" style="width:160px" onchange="this.form.submit()">
+                    <option value="">Tất cả danh mục</option>
+                    <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
+                    <option value="<?= $c['id'] ?>" <?= $filter_cat==$c['id']?'selected':'' ?>><?= htmlspecialchars($c['name']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+                <select name="status" class="form-select form-select-sm" style="width:130px" onchange="this.form.submit()">
+                    <option value="">Tất cả</option>
+                    <option value="active" <?= $filter_status==='active'?'selected':'' ?>>Đang bán</option>
+                    <option value="hidden" <?= $filter_status==='hidden'?'selected':'' ?>>Đã ẩn</option>
+                </select>
+                <button class="btn btn-primary btn-sm"><i class="bi bi-search"></i></button>
+                <?php if ($search_p || $filter_cat || $filter_status): ?>
+                <a href="products.php" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>
+                <?php endif; ?>
+            </form>
+        </div>
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -403,6 +421,14 @@ function updateSizeLabel(cb){
             </tbody>
         </table>
     </div>
+    <?php if ($total_p > $per_page_p): ?>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">Hiển thị <?= min($offset_p+1,$total_p) ?>–<?= min($offset_p+$per_page_p,$total_p) ?> / <?= $total_p ?> sản phẩm</small>
+            <?= renderPagination($total_p, $page_p, $per_page_p, $params_p) ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php adminFooter(); ?>
