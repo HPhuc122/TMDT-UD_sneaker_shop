@@ -238,7 +238,7 @@ $params = array_filter(['q'=>$search,'role'=>$filter_role]);
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Vai trò</label>
-                            <select name="role" class="form-select">
+                            <select name="role" id="roleSelect" class="form-select" onchange="toggleAddressSection(this)">
                                 <option value="customer">Khách hàng</option>
                                 <option value="admin">Admin</option>
                             </select>
@@ -256,27 +256,31 @@ $params = array_filter(['q'=>$search,'role'=>$filter_role]);
                             <label class="form-label">Số điện thoại</label>
                             <input type="text" name="phone" class="form-control" placeholder="0901...">
                         </div>
-                        <!-- Address -->
-                        <div class="col-12 mt-2">
-                            <p class="text-muted small fw-bold mb-2 border-bottom pb-1">
-                                <i class="bi bi-geo-alt me-1"></i>ĐỊA CHỈ GIAO HÀNG <span class="fw-normal text-muted">(tùy chọn)</span>
-                            </p>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Địa chỉ (số nhà, tên đường)</label>
-                            <input type="text" name="address" class="form-control" placeholder="VD: 123 Nguyễn Huệ">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Phường/Xã</label>
-                            <input type="text" name="ward" class="form-control" placeholder="Phường Bến Nghé">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Quận/Huyện</label>
-                            <input type="text" name="district" class="form-control" placeholder="Quận 1">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Tỉnh/Thành phố</label>
-                            <input type="text" name="city" class="form-control" placeholder="TP. Hồ Chí Minh">
+                        <!-- Address - hidden for admin -->
+                        <div id="addressSection" class="col-12">
+                            <div class="row g-3">
+                                <div class="col-12 mt-2">
+                                    <p class="text-muted small fw-bold mb-2 border-bottom pb-1">
+                                        <i class="bi bi-geo-alt me-1"></i>ĐỊA CHỈ GIAO HÀNG <span class="fw-normal text-muted">(tùy chọn, chỉ dành cho khách hàng)</span>
+                                    </p>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Địa chỉ (số nhà, tên đường)</label>
+                                    <input type="text" name="address" class="form-control" placeholder="VD: 123 Nguyễn Huệ">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Phường/Xã</label>
+                                    <input type="text" name="ward" class="form-control" placeholder="Phường Bến Nghé">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Quận/Huyện</label>
+                                    <input type="text" name="district" class="form-control" placeholder="Quận 1">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Tỉnh/Thành phố</label>
+                                    <input type="text" name="city" class="form-control" placeholder="TP. Hồ Chí Minh">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -292,3 +296,17 @@ $params = array_filter(['q'=>$search,'role'=>$filter_role]);
 </div>
 
 <?php adminFooter(); ?>
+<script>
+function toggleAddressSection(select) {
+    const section = document.getElementById('addressSection');
+    if (section) {
+        section.style.display = select.value === 'admin' ? 'none' : 'block';
+    }
+}
+// Reset modal form every time it opens
+document.getElementById('addUserModal').addEventListener('show.bs.modal', function() {
+    this.querySelector('form').reset();
+    const section = document.getElementById('addressSection');
+    if (section) section.style.display = 'block';
+});
+</script>

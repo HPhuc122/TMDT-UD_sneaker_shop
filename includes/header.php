@@ -57,29 +57,32 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                 <input class="form-control form-control-sm me-2" type="search" name="q" placeholder="Tìm sneaker..." style="width:200px">
                 <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-search"></i></button>
             </form>
-            <ul class="navbar-nav">
+            <ul class="navbar-nav align-items-center">
                 <?php if (isLoggedIn()): ?>
-                <li class="nav-item me-2">
-                    <a class="nav-link" href="/sneaker_shop/cart.php">
-                        <i class="bi bi-cart3 fs-5"></i>
+                <li class="nav-item">
+                    <a class="nav-link px-2" href="/sneaker_shop/cart.php" style="line-height:1">
+                        <i class="bi bi-cart3 fs-5" style="vertical-align:middle"></i>
                     </a>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']) ?>
+                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" href="#" data-bs-toggle="dropdown">
+                        <i class="bi bi-person-circle fs-5"></i>
+                        <span><?= htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']) ?></span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="/sneaker_shop/my_orders.php"><i class="bi bi-bag-check"></i> Đơn hàng của tôi</a></li>
+                        <li><a class="dropdown-item" href="/sneaker_shop/my_orders.php"><i class="bi bi-bag-check me-2"></i>Đơn hàng của tôi</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="/sneaker_shop/login.php?action=logout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</a></li>
+                        <li><a class="dropdown-item text-danger" href="/sneaker_shop/login.php?action=logout"><i class="bi bi-box-arrow-right me-2"></i>Đăng xuất</a></li>
                     </ul>
                 </li>
                 <?php else: ?>
                 <li class="nav-item">
-                    <a class="nav-link" href="/sneaker_shop/login.php"><i class="bi bi-box-arrow-in-right"></i> Đăng nhập</a>
+                    <a class="nav-link d-flex align-items-center" href="/sneaker_shop/login.php">
+                        <i class="bi bi-box-arrow-in-right me-1"></i>Đăng nhập
+                    </a>
                 </li>
                 <li class="nav-item d-flex align-items-center">
-                    <a class="btn btn-primary btn-sm ms-1" href="/sneaker_shop/register.php">Đăng ký</a>
+                    <a class="btn btn-primary btn-sm px-3" href="/sneaker_shop/register.php">Đăng ký</a>
                 </li>
                 <?php endif; ?>
             </ul>

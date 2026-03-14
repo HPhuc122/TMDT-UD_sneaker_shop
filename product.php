@@ -161,10 +161,11 @@ require_once 'includes/header.php';
                     <!-- Size selector -->
                     <?php if (!empty($sizes)): ?>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Chọn size: <span class="text-danger">*</span>
+                        <label class="form-label fw-semibold">
+                            Chọn size: <span class="text-danger">*</span>
                             <span id="sizeSelected" class="ms-2 text-muted fw-normal small"></span>
                         </label>
-                        <div class="d-flex flex-wrap gap-2" id="sizeGrid">
+                        <div class="d-flex flex-wrap gap-2 mb-2" id="sizeGrid">
                             <?php foreach ($sizes as $sz): ?>
                             <button type="button" class="btn btn-outline-secondary size-btn"
                                     style="width:52px;height:44px;font-size:.9rem;border-radius:8px"
@@ -173,6 +174,10 @@ require_once 'includes/header.php';
                                 <?= htmlspecialchars($sz) ?>
                             </button>
                             <?php endforeach; ?>
+                        </div>
+                        <div class="d-flex align-items-start gap-2 p-2 rounded" style="background:#fff8e1;border:1px solid #ffe082;font-size:.82rem;color:#795548">
+                            <i class="bi bi-info-circle-fill mt-1 flex-shrink-0" style="color:#f59e0b"></i>
+                            <span>Size là yêu cầu của bạn khi đặt hàng. Chúng tôi sẽ xác nhận tình trạng tồn kho theo size sau khi nhận đơn. Nếu size không còn hàng, nhân viên sẽ liên hệ tư vấn thay thế.</span>
                         </div>
                         <input type="hidden" name="selected_size" id="selectedSizeInput" value="">
                     </div>
