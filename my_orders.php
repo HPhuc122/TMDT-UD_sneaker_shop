@@ -1,9 +1,10 @@
 <?php
-// my_orders.php
-require_once 'includes/header.php';
+// my_orders.php — load db.php first so redirect works before HTML
+require_once 'includes/db.php';
 if (!isLoggedIn()) redirect('login.php?redirect=my_orders.php');
 
 $pageTitle = 'Đơn hàng của tôi';
+require_once 'includes/header.php';
 $user_id = $_SESSION['user_id'];
 
 $orders = $conn->query("SELECT * FROM orders WHERE user_id=$user_id ORDER BY created_at DESC");

@@ -1,8 +1,16 @@
 <?php
-// admin/_layout.php - shared admin layout functions
-if (session_status() === PHP_SESSION_NONE) session_start();
+// admin/_layout.php
+// MUST set session name before ANY include that might start a session
+if (session_status() === PHP_SESSION_NONE) {
+    session_name('sneaker_admin_sess');
+    session_start();
+}
 require_once '../includes/db.php';
-if (!isAdmin()) redirect('login.php');
+// db.php will see session already active and skip its own session_start()
+
+if (!isAdmin()) {
+    redirect('login.php');
+}
 
 function adminHeader($title, $active = '') {
     global $_SESSION;

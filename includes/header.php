@@ -1,7 +1,7 @@
 <?php
 // includes/header.php
-if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/db.php';
+// db.php already started the user session with correct name
 
 // Get categories for nav
 $cats = $conn->query("SELECT * FROM categories ORDER BY name");
@@ -23,7 +23,6 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
         .btn-primary { background: #ff6b35; border-color: #ff6b35; }
         .btn-primary:hover { background: #e55a24; border-color: #e55a24; }
         .price-tag { color: #ff6b35; font-weight: 700; font-size: 1.1rem; }
-        .cart-badge { position: absolute; top: -6px; right: -8px; background: #ff6b35; font-size: 0.65rem; }
         footer { background: #1a1a2e; color: #ccc; }
         .section-title { border-left: 4px solid #ff6b35; padding-left: 12px; }
     </style>
@@ -60,15 +59,9 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
             </form>
             <ul class="navbar-nav">
                 <?php if (isLoggedIn()): ?>
-                <li class="nav-item position-relative me-2">
+                <li class="nav-item me-2">
                     <a class="nav-link" href="/sneaker_shop/cart.php">
                         <i class="bi bi-cart3 fs-5"></i>
-                        <?php
-                        $cartCount = 0;
-                        if (isset($_SESSION['cart'])) $cartCount = array_sum(array_column($_SESSION['cart'], 'qty'));
-                        if ($cartCount > 0): ?>
-                        <span class="badge rounded-pill cart-badge"><?= $cartCount ?></span>
-                        <?php endif; ?>
                     </a>
                 </li>
                 <li class="nav-item dropdown">
@@ -85,8 +78,8 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                 <li class="nav-item">
                     <a class="nav-link" href="/sneaker_shop/login.php"><i class="bi bi-box-arrow-in-right"></i> Đăng nhập</a>
                 </li>
-                <li class="nav-item">
-                    <a class="btn btn-primary btn-sm ms-2" href="/sneaker_shop/register.php">Đăng ký</a>
+                <li class="nav-item d-flex align-items-center">
+                    <a class="btn btn-primary btn-sm ms-1" href="/sneaker_shop/register.php">Đăng ký</a>
                 </li>
                 <?php endif; ?>
             </ul>

@@ -11,17 +11,27 @@ $stock_date = isset($_GET['stock_date']) ? sanitize($conn, $_GET['stock_date']) 
 $stock_cat  = isset($_GET['stock_cat']) ? (int)$_GET['stock_cat'] : 0;
 $where_cat  = $stock_cat ? "AND p.category_id=$stock_cat" : '';
 
-// Đây là tồn kho hiện tại, không phải tại thời điểm cụ thể
-// (tính tồn kho tại ngày: tổng nhập đến ngày - tổng xuất đến ngày)
+// Tính tồn kho tại ngày X:
+// - Tổng nhập (từ phiếu nhập hoàn thành, tính đến ngày X) + stock ban đầu (stock_quantity ban đầu khi chưa có phiếu nhập)
+// - Tổng bán (đơn hàng không bị huỷ, tính đến ngày X)
+// - Tồn = stock_quantity hiện tại + tổng bán AFTER ngày X - tổng nhập AFTER ngày X
+// Cách đơn giản & chính xác nhất: tồn tại ngày X = stock_hiện_tại - nhập_sau_X + bán_sau_X
+
 $stock_sql = "SELECT p.id, p.code, p.name, c.name as cat_name, p.stock_quantity,
     p.import_price, p.profit_rate,
     ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price,
-    COALESCE((SELECT SUM(id.quantity) FROM import_details id 
-              JOIN import_receipts ir ON id.receipt_id=ir.id 
-              WHERE id.product_id=p.id AND ir.status='completed' AND ir.import_date <= '$stock_date'), 0) as total_imported,
-    COALESCE((SELECT SUM(od.quantity) FROM order_details od 
-              JOIN orders o ON od.order_id=o.id 
-              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled') AND DATE(o.created_at) <= '$stock_date'), 0) as total_sold
+    COALESCE((SELECT SUM(id2.quantity) FROM import_details id2
+              JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
+              WHERE id2.product_id=p.id AND ir2.status='completed'), 0) as total_imported_all,
+    COALESCE((SELECT SUM(id2.quantity) FROM import_details id2
+              JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
+              WHERE id2.product_id=p.id AND ir2.status='completed' AND ir2.import_date > '$stock_date'), 0) as imported_after,
+    COALESCE((SELECT SUM(od.quantity) FROM order_details od
+              JOIN orders o ON od.order_id=o.id
+              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled')), 0) as total_sold_all,
+    COALESCE((SELECT SUM(od.quantity) FROM order_details od
+              JOIN orders o ON od.order_id=o.id
+              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled') AND DATE(o.created_at) > '$stock_date'), 0) as sold_after
 FROM products p JOIN categories c ON p.category_id=c.id
 WHERE p.status='active' $where_cat
 ORDER BY p.name";
@@ -31,14 +41,17 @@ $stocks = $conn->query($stock_sql);
 $rep_from = isset($_GET['rep_from']) ? sanitize($conn, $_GET['rep_from']) : date('Y-m-01');
 $rep_to   = isset($_GET['rep_to']) ? sanitize($conn, $_GET['rep_to']) : date('Y-m-d');
 $report = $conn->query("SELECT p.code, p.name, c.name as cat_name,
-    COALESCE((SELECT SUM(id.quantity) FROM import_details id JOIN import_receipts ir ON id.receipt_id=ir.id
-              WHERE id.product_id=p.id AND ir.status='completed' AND ir.import_date BETWEEN '$rep_from' AND '$rep_to'), 0) as qty_imported,
+    COALESCE((SELECT SUM(id2.quantity) FROM import_details id2 JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
+              WHERE id2.product_id=p.id AND ir2.status='completed' AND ir2.import_date BETWEEN '$rep_from' AND '$rep_to'), 0) as qty_imported,
     COALESCE((SELECT SUM(od.quantity) FROM order_details od JOIN orders o ON od.order_id=o.id
-              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled') AND DATE(o.created_at) BETWEEN '$rep_from' AND '$rep_to'), 0) as qty_sold,
-    p.stock_quantity
+              WHERE od.product_id=p.id AND o.status IN ('pending','confirmed','delivered')
+              AND DATE(o.created_at) BETWEEN '$rep_from' AND '$rep_to'), 0) as qty_sold,
+    p.stock_quantity,
+    COALESCE((SELECT SUM(od2.quantity) FROM order_details od2 JOIN orders o2 ON od2.order_id=o2.id
+              WHERE od2.product_id=p.id AND o2.status IN ('pending','confirmed','delivered')), 0) as total_sold_ever
 FROM products p JOIN categories c ON p.category_id=c.id
 WHERE p.status='active'
-ORDER BY qty_sold DESC");
+ORDER BY qty_sold DESC, p.name");
 
 $categories = $conn->query("SELECT * FROM categories ORDER BY name");
 ?>
@@ -101,15 +114,26 @@ $categories = $conn->query("SELECT * FROM categories ORDER BY name");
             </thead>
             <tbody>
                 <?php while ($s = $stocks->fetch_assoc()):
-                    $ton = $s['total_imported'] - $s['total_sold'];
+                    // Tồn tại ngày X = tồn hiện tại - nhập sau X + bán sau X
+                    $ton_at_date = $s['stock_quantity'] - $s['imported_after'] + $s['sold_after'];
+                    $ton_at_date = max(0, $ton_at_date);
+                    // Tổng nhập đến ngày X = tổng nhập từ phiếu + stock ban đầu (tính ngược)
+                    // Nếu chưa có phiếu nhập nào, tổng nhập = stock hiện tại + tổng đã bán
+                    $imp_to_date = $s['total_imported_all'] - $s['imported_after'];
+                    $sold_to_date = $s['total_sold_all'] - $s['sold_after'];
+                    // Nếu không có phiếu nhập, hiển thị stock_quantity thực (giá trị ban đầu nhập tay)
+                    if ($s['total_imported_all'] == 0) {
+                        // Tổng nhập = tồn hiện tại + tổng đã bán (tái tạo số ban đầu)
+                        $imp_to_date = $s['stock_quantity'] + $s['total_sold_all'];
+                    }
                 ?>
                 <tr>
                     <td class="small text-muted"><?= htmlspecialchars($s['code']) ?></td>
                     <td><?= htmlspecialchars($s['name']) ?></td>
                     <td class="small"><?= htmlspecialchars($s['cat_name']) ?></td>
-                    <td class="text-center"><?= $s['total_imported'] ?></td>
-                    <td class="text-center"><?= $s['total_sold'] ?></td>
-                    <td class="text-center"><span class="badge bg-<?= $ton <= 0 ? 'danger' : ($ton <= 5 ? 'warning' : 'success') ?>"><?= $ton ?></span></td>
+                    <td class="text-center"><?= $imp_to_date ?></td>
+                    <td class="text-center"><?= $sold_to_date ?></td>
+                    <td class="text-center"><span class="badge bg-<?= $ton_at_date <= 0 ? 'danger' : ($ton_at_date <= 5 ? 'warning' : 'success') ?>"><?= $ton_at_date ?></span></td>
                     <td class="text-end small"><?= formatPrice($s['import_price']) ?></td>
                     <td class="text-end small fw-bold" style="color:#e74c3c"><?= formatPrice($s['sell_price']) ?></td>
                 </tr>
@@ -142,7 +166,7 @@ $categories = $conn->query("SELECT * FROM categories ORDER BY name");
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
-                <tr><th>Mã</th><th>Sản phẩm</th><th>Danh mục</th><th class="text-center">SL nhập</th><th class="text-center">SL bán</th><th class="text-center">Tồn hiện tại</th></tr>
+                <tr><th>Mã</th><th>Sản phẩm</th><th>Danh mục</th><th class="text-center">SL nhập (kỳ)</th><th class="text-center">SL bán (kỳ)</th><th class="text-center">Tổng bán (all)</th><th class="text-center">Tồn hiện tại</th></tr>
             </thead>
             <tbody>
                 <?php $total_imp=0; $total_sold=0;
@@ -156,7 +180,12 @@ $categories = $conn->query("SELECT * FROM categories ORDER BY name");
                     <td class="small"><?= htmlspecialchars($r['cat_name']) ?></td>
                     <td class="text-center text-primary"><?= $r['qty_imported'] ?></td>
                     <td class="text-center text-success fw-bold"><?= $r['qty_sold'] ?></td>
-                    <td class="text-center"><?= $r['stock_quantity'] ?></td>
+                    <td class="text-center text-secondary"><?= $r['total_sold_ever'] ?></td>
+                    <td class="text-center">
+                        <span class="badge bg-<?= $r['stock_quantity']==0?'danger':($r['stock_quantity']<=5?'warning':'success') ?>">
+                            <?= $r['stock_quantity'] ?>
+                        </span>
+                    </td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>

@@ -1,14 +1,16 @@
 <?php
 // login.php
-if (session_status() === PHP_SESSION_NONE) session_start();
 require_once 'includes/db.php';
+// db.php started the USER session (sneaker_user_sess)
 
-// Logout
+// Logout user session only
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+    $_SESSION = [];
     session_destroy();
     redirect('index.php');
 }
 
+// If already logged in as customer, go home
 if (isLoggedIn()) redirect('index.php');
 
 $error = '';
@@ -27,10 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user['status'] === 'locked') {
                 $error = 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.';
             } else {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
+                $_SESSION['user_id']   = $user['id'];
+                $_SESSION['username']  = $user['username'];
                 $_SESSION['full_name'] = $user['full_name'];
-                $_SESSION['role'] = $user['role'];
+                $_SESSION['role']      = 'customer';
                 redirect($redirect);
             }
         } else {
@@ -85,7 +87,7 @@ $pageTitle = 'Đăng nhập';
                             <label class="form-label fw-semibold">Mật khẩu</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                                <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                                <input type="password" name="password" class="form-control" autocomplete="current-password" required>
                             </div>
                         </div>
                         <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">

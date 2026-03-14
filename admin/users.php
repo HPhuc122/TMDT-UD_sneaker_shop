@@ -43,13 +43,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // Toggle lock
 if (isset($_GET['toggle'])) {
     $uid = (int)$_GET['toggle'];
-    $u = $conn->query("SELECT status FROM users WHERE id=$uid")->fetch_assoc();
+    $u = $conn->query("SELECT status, username FROM users WHERE id=$uid")->fetch_assoc();
     if ($u['status'] === 'active') {
         $conn->query("UPDATE users SET status='locked' WHERE id=$uid");
-        $msg = '<div class="alert alert-warning">Đã khóa tài khoản.</div>';
+        // isLoggedIn() in db.php checks DB status on every request,
+        // so the user will be auto-logged out on their very next page load.
+        $msg = '<div class="alert alert-warning"><i class="bi bi-lock me-2"></i>Đã khóa tài khoản <strong>'
+             . htmlspecialchars($u['username'])
+             . '</strong>. Người dùng sẽ bị tự động đăng xuất ngay lần tải trang tiếp theo.</div>';
     } else {
         $conn->query("UPDATE users SET status='active' WHERE id=$uid");
-        $msg = '<div class="alert alert-success">Đã mở khóa tài khoản.</div>';
+        $msg = '<div class="alert alert-success"><i class="bi bi-unlock me-2"></i>Đã mở khóa tài khoản <strong>'
+             . htmlspecialchars($u['username']) . '</strong>.</div>';
     }
 }
 

@@ -29,6 +29,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $stock       = (int)$_POST['stock_quantity'];
     $profit_rate = (float)$_POST['profit_rate'];
     $status      = sanitize($conn, $_POST['status'] ?? 'active');
+    // New attribute fields
+    $brand       = sanitize($conn, $_POST['brand'] ?? '');
+    $gender      = sanitize($conn, $_POST['gender'] ?? 'unisex');
+    $color       = sanitize($conn, $_POST['color'] ?? '');
+    $material    = sanitize($conn, $_POST['material'] ?? '');
+    $origin      = sanitize($conn, $_POST['origin'] ?? '');
+    // Sizes: collect checked checkboxes or manual input
+    $sizes_raw   = isset($_POST['sizes']) && is_array($_POST['sizes']) ? $_POST['sizes'] : [];
+    $sizes_extra = sanitize($conn, $_POST['sizes_extra'] ?? '');
+    if ($sizes_extra) {
+        $extra = array_map('trim', explode(',', $sizes_extra));
+        $sizes_raw = array_unique(array_merge($sizes_raw, $extra));
+    }
+    sort($sizes_raw, SORT_NUMERIC);
+    $available_sizes = implode(',', array_filter($sizes_raw));
     $image       = '';
 
     if (!$code || !$name || !$cat_id) {
@@ -51,18 +66,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($check->num_rows > 0) {
                 $msg = '<div class="alert alert-danger">Mã sản phẩm đã tồn tại.</div>';
             } else {
-                $conn->query("INSERT INTO products (code,name,category_id,description,unit,stock_quantity,profit_rate,image,status) VALUES ('$code','$name',$cat_id,'$desc','$unit',$stock,$profit_rate,'$image','$status')");
+                $conn->query("INSERT INTO products (code,name,category_id,description,unit,stock_quantity,profit_rate,image,brand,gender,available_sizes,color,material,origin,status)
+                    VALUES ('$code','$name',$cat_id,'$desc','$unit',$stock,$profit_rate,'$image','$brand','$gender','$available_sizes','$color','$material','$origin','$status')");
                 $msg = '<div class="alert alert-success">Đã thêm sản phẩm thành công.</div>';
                 $_POST = [];
             }
         } elseif ($_POST['action'] === 'edit') {
             $id = (int)$_POST['id'];
             $img_sql = $image ? ", image='$image'" : '';
-            // Check remove image
             if (isset($_POST['remove_image']) && $_POST['remove_image'] == '1') {
                 $img_sql = ", image=''";
             }
-            $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',profit_rate=$profit_rate,status='$status'$img_sql WHERE id=$id");
+            $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',
+                profit_rate=$profit_rate,status='$status',brand='$brand',gender='$gender',
+                available_sizes='$available_sizes',color='$color',material='$material',origin='$origin'$img_sql WHERE id=$id");
             $msg = '<div class="alert alert-success">Đã cập nhật sản phẩm.</div>';
         }
         end_save:;
@@ -89,6 +106,27 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
 
 <?= $msg ?>
 
+<?php
+// Shared helper to render size checkboxes
+function renderSizeCheckboxes($existing_sizes_str) {
+    $presets = ['36','37','38','39','40','41','42','43','44','45'];
+    $selected = array_filter(array_map('trim', explode(',', $existing_sizes_str)));
+    $html = '<div class="d-flex flex-wrap gap-2 mb-2">';
+    foreach ($presets as $s) {
+        $chk = in_array($s, $selected) ? 'checked' : '';
+        $html .= "<div class='form-check form-check-inline border rounded px-2 py-1 m-0' style='cursor:pointer'>
+            <input class='form-check-input' type='checkbox' name='sizes[]' value='$s' id='sz$s' $chk>
+            <label class='form-check-label small' for='sz$s'>$s</label>
+        </div>";
+    }
+    $html .= '</div>';
+    // Extra custom sizes
+    $extras = array_diff($selected, $presets);
+    $html .= '<input type="text" name="sizes_extra" class="form-control form-control-sm mt-1" placeholder="Thêm size khác, cách nhau bởi dấu phẩy (VD: 46,47)" value="' . implode(',', $extras) . '">';
+    return $html;
+}
+?>
+
 <?php if ($edit_p): ?>
 <!-- Edit Form -->
 <div class="card border-0 shadow-sm mb-4">
@@ -100,16 +138,18 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="id" value="<?= $edit_p['id'] ?>">
-            <div class="row g-3">
-                <div class="col-md-3">
+
+            <h6 class="text-muted fw-bold mb-3 small">THÔNG TIN CƠ BẢN</h6>
+            <div class="row g-3 mb-3">
+                <div class="col-md-2">
                     <label class="form-label">Mã SP <span class="text-danger">*</span></label>
                     <input type="text" name="code" class="form-control" value="<?= htmlspecialchars($edit_p['code']) ?>" required>
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
                     <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($edit_p['name']) ?>" required>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Danh mục <span class="text-danger">*</span></label>
                     <select name="category_id" class="form-select" required>
                         <?php $categories->data_seek(0); while ($c = $categories->fetch_assoc()): ?>
@@ -117,30 +157,8 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
                         <?php endwhile; ?>
                     </select>
                 </div>
-                <div class="col-12">
-                    <label class="form-label">Mô tả</label>
-                    <textarea name="description" class="form-control" rows="2"><?= htmlspecialchars($edit_p['description']) ?></textarea>
-                </div>
                 <div class="col-md-3">
-                    <label class="form-label">Đơn vị</label>
-                    <input type="text" name="unit" class="form-control" value="<?= htmlspecialchars($edit_p['unit']) ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">% Lợi nhuận</label>
-                    <div class="input-group">
-                        <input type="number" name="profit_rate" class="form-control" value="<?= $edit_p['profit_rate'] ?>" step="0.01" min="0">
-                        <span class="input-group-text">%</span>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Hiện trạng</label>
-                    <select name="status" class="form-select">
-                        <option value="active" <?= $edit_p['status']=='active'?'selected':'' ?>>Hiển thị (đang bán)</option>
-                        <option value="hidden" <?= $edit_p['status']=='hidden'?'selected':'' ?>>Ẩn (không bán)</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Ảnh mới</label>
+                    <label class="form-label">Hình ảnh</label>
                     <input type="file" name="image" class="form-control" accept="image/*">
                     <?php if ($edit_p['image']): ?>
                     <div class="mt-2 d-flex align-items-center gap-2">
@@ -152,11 +170,64 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
                     </div>
                     <?php endif; ?>
                 </div>
+                <div class="col-12">
+                    <label class="form-label">Mô tả</label>
+                    <textarea name="description" class="form-control" rows="2"><?= htmlspecialchars($edit_p['description']) ?></textarea>
+                </div>
             </div>
-            <div class="mt-3">
-                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-save me-1"></i>Lưu thay đổi</button>
-                <a href="products.php" class="btn btn-outline-secondary">Hủy</a>
+
+            <h6 class="text-muted fw-bold mb-3 small">THUỘC TÍNH SẢN PHẨM</h6>
+            <div class="row g-3 mb-3">
+                <div class="col-md-2">
+                    <label class="form-label">Thương hiệu</label>
+                    <input type="text" name="brand" class="form-control" value="<?= htmlspecialchars($edit_p['brand'] ?? '') ?>" placeholder="Nike, Adidas...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Đối tượng</label>
+                    <select name="gender" class="form-select">
+                        <option value="unisex" <?= ($edit_p['gender']??'')=='unisex'?'selected':'' ?>>Unisex</option>
+                        <option value="nam"    <?= ($edit_p['gender']??'')=='nam'?'selected':'' ?>>Nam</option>
+                        <option value="nu"     <?= ($edit_p['gender']??'')=='nu'?'selected':'' ?>>Nữ</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Màu sắc</label>
+                    <input type="text" name="color" class="form-control" value="<?= htmlspecialchars($edit_p['color'] ?? '') ?>" placeholder="Trắng, Đen...">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Chất liệu</label>
+                    <input type="text" name="material" class="form-control" value="<?= htmlspecialchars($edit_p['material'] ?? '') ?>" placeholder="Da thật, vải...">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Xuất xứ</label>
+                    <input type="text" name="origin" class="form-control" value="<?= htmlspecialchars($edit_p['origin'] ?? '') ?>" placeholder="Việt Nam, TQ...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Đơn vị</label>
+                    <input type="text" name="unit" class="form-control" value="<?= htmlspecialchars($edit_p['unit']) ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">% Lợi nhuận</label>
+                    <div class="input-group">
+                        <input type="number" name="profit_rate" class="form-control" value="<?= $edit_p['profit_rate'] ?>" step="0.01" min="0">
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Hiện trạng</label>
+                    <select name="status" class="form-select">
+                        <option value="active" <?= $edit_p['status']=='active'?'selected':'' ?>>Đang bán</option>
+                        <option value="hidden" <?= $edit_p['status']=='hidden'?'selected':'' ?>>Ẩn</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Size có sẵn</label>
+                    <?= renderSizeCheckboxes($edit_p['available_sizes'] ?? '') ?>
+                </div>
             </div>
+
+            <button type="submit" class="btn btn-primary me-2"><i class="bi bi-save me-1"></i>Lưu thay đổi</button>
+            <a href="products.php" class="btn btn-outline-secondary">Hủy</a>
         </form>
     </div>
 </div>
@@ -175,16 +246,18 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
         <div class="card-body">
             <form method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="add">
-                <div class="row g-3">
-                    <div class="col-md-3">
+
+                <h6 class="text-muted fw-bold mb-3 small">THÔNG TIN CƠ BẢN</h6>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-2">
                         <label class="form-label">Mã SP <span class="text-danger">*</span></label>
                         <input type="text" name="code" class="form-control" value="<?= htmlspecialchars($_POST['code'] ?? '') ?>" required>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-4">
                         <label class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
                         <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>" required>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">Danh mục <span class="text-danger">*</span></label>
                         <select name="category_id" class="form-select" required>
                             <option value="">-- Chọn danh mục --</option>
@@ -193,33 +266,64 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
                             <?php endwhile; ?>
                         </select>
                     </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Hình ảnh</label>
+                        <input type="file" name="image" class="form-control" accept="image/*">
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Mô tả</label>
                         <textarea name="description" class="form-control" rows="2"></textarea>
                     </div>
+                </div>
+
+                <h6 class="text-muted fw-bold mb-3 small">THUỘC TÍNH SẢN PHẨM</h6>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-2">
+                        <label class="form-label">Thương hiệu</label>
+                        <input type="text" name="brand" class="form-control" placeholder="Nike, Adidas...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Đối tượng</label>
+                        <select name="gender" class="form-select">
+                            <option value="unisex">Unisex</option>
+                            <option value="nam">Nam</option>
+                            <option value="nu">Nữ</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Màu sắc</label>
+                        <input type="text" name="color" class="form-control" placeholder="Trắng, Đen...">
+                    </div>
                     <div class="col-md-3">
+                        <label class="form-label">Chất liệu</label>
+                        <input type="text" name="material" class="form-control" placeholder="Da thật, vải...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Xuất xứ</label>
+                        <input type="text" name="origin" class="form-control" placeholder="Việt Nam, TQ...">
+                    </div>
+                    <div class="col-md-2">
                         <label class="form-label">Đơn vị</label>
                         <input type="text" name="unit" class="form-control" value="đôi">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label">SL ban đầu</label>
                         <input type="number" name="stock_quantity" class="form-control" value="0" min="0">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label">% Lợi nhuận</label>
                         <div class="input-group">
                             <input type="number" name="profit_rate" class="form-control" value="30" step="0.01" min="0">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Hình ảnh</label>
-                        <input type="file" name="image" class="form-control" accept="image/*">
+                    <div class="col-12">
+                        <label class="form-label">Size có sẵn</label>
+                        <?= renderSizeCheckboxes('') ?>
                     </div>
                 </div>
-                <div class="mt-3">
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Thêm sản phẩm</button>
-                </div>
+
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Thêm sản phẩm</button>
             </form>
         </div>
     </div>
@@ -247,10 +351,12 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
-                <tr><th>Mã</th><th>Sản phẩm</th><th>Danh mục</th><th class="text-end">Giá vốn</th><th class="text-end">Giá bán</th><th class="text-center">Tồn kho</th><th class="text-center">Trạng thái</th><th class="text-center">Thao tác</th></tr>
+                <tr><th>Mã</th><th>Sản phẩm</th><th>Danh mục</th><th>Thương hiệu</th><th>Đối tượng</th><th class="text-end">Giá vốn</th><th class="text-end">Giá bán</th><th class="text-center">Tồn kho</th><th class="text-center">Trạng thái</th><th class="text-center">Thao tác</th></tr>
             </thead>
             <tbody>
-                <?php while ($p = $products->fetch_assoc()): ?>
+                <?php
+                $genderBadge = ['nam'=>'<span class="badge bg-primary">Nam</span>','nu'=>'<span class="badge" style="background:#e91e8c">Nữ</span>','unisex'=>'<span class="badge bg-secondary">Unisex</span>'];
+                while ($p = $products->fetch_assoc()): ?>
                 <tr>
                     <td class="small text-muted"><?= htmlspecialchars($p['code']) ?></td>
                     <td>
@@ -258,10 +364,17 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
                             <?php if ($p['image'] && file_exists('../uploads/'.$p['image'])): ?>
                             <img src="../uploads/<?= htmlspecialchars($p['image']) ?>" width="40" height="40" style="object-fit:cover;border-radius:6px">
                             <?php endif; ?>
-                            <span class="fw-semibold"><?= htmlspecialchars($p['name']) ?></span>
+                            <div>
+                                <div class="fw-semibold"><?= htmlspecialchars($p['name']) ?></div>
+                                <?php if ($p['color']): ?>
+                                <small class="text-muted"><?= htmlspecialchars($p['color']) ?></small>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </td>
                     <td class="small"><?= htmlspecialchars($p['cat_name']) ?></td>
+                    <td class="small"><?= htmlspecialchars($p['brand'] ?? '—') ?></td>
+                    <td><?= $genderBadge[$p['gender'] ?? 'unisex'] ?? '' ?></td>
                     <td class="text-end small"><?= formatPrice($p['import_price']) ?></td>
                     <td class="text-end small fw-bold" style="color:#ff6b35"><?= formatPrice($p['sell_price']) ?></td>
                     <td class="text-center">

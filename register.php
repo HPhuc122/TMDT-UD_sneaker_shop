@@ -1,7 +1,7 @@
 <?php
 // register.php
-if (session_status() === PHP_SESSION_NONE) session_start();
 require_once 'includes/db.php';
+// db.php started the USER session
 if (isLoggedIn()) redirect('index.php');
 
 $error = '';
@@ -27,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Mật khẩu xác nhận không khớp.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Email không hợp lệ.';
+    } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
+        $error = 'Số điện thoại phải bắt đầu bằng số 0 và có 10-11 chữ số (VD: 0901234567).';
     } else {
         $check = $conn->query("SELECT id FROM users WHERE username='$username'");
         if ($check->num_rows > 0) {
@@ -78,33 +80,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="alert alert-success"><?= $success ?></div>
                     <?php endif; ?>
 
-                    <form method="POST" onsubmit="return validateForm()">
+                    <form method="POST" novalidate onsubmit="return validateForm()">
                         <h6 class="text-muted fw-bold mb-3">THÔNG TIN TÀI KHOẢN</h6>
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                                <input type="text" name="username" class="form-control" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required>
+                                <input type="text" name="username" class="form-control" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Họ và tên <span class="text-danger">*</span></label>
-                                <input type="text" name="full_name" class="form-control" value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>" required>
+                                <input type="text" name="full_name" class="form-control" value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                                <input type="password" name="password" id="password" class="form-control" minlength="6" required>
+                                <input type="password" name="password" id="password" class="form-control" autocomplete="new-password">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Xác nhận mật khẩu <span class="text-danger">*</span></label>
-                                <input type="password" name="confirm_password" id="confirm_password" class="form-control" required>
-                                <div id="pwMatch" class="form-text"></div>
+                                <input type="password" name="confirm_password" id="confirm_password" class="form-control" autocomplete="new-password">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Email <span class="text-danger">*</span></label>
-                                <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
+                                <input type="text" name="email" class="form-control" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
-                                <input type="tel" name="phone" class="form-control" pattern="[0-9]{10,11}" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>" required>
+                                <input type="text" name="phone" class="form-control" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
                             </div>
                         </div>
 
@@ -112,19 +113,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="row g-3 mb-4">
                             <div class="col-12">
                                 <label class="form-label">Địa chỉ (số nhà, tên đường) <span class="text-danger">*</span></label>
-                                <input type="text" name="address" class="form-control" value="<?= htmlspecialchars($_POST['address'] ?? '') ?>" required>
+                                <input type="text" name="address" class="form-control" value="<?= htmlspecialchars($_POST['address'] ?? '') ?>">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Phường/Xã <span class="text-danger">*</span></label>
-                                <input type="text" name="ward" class="form-control" value="<?= htmlspecialchars($_POST['ward'] ?? '') ?>" required>
+                                <input type="text" name="ward" class="form-control" value="<?= htmlspecialchars($_POST['ward'] ?? '') ?>">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Quận/Huyện <span class="text-danger">*</span></label>
-                                <input type="text" name="district" class="form-control" value="<?= htmlspecialchars($_POST['district'] ?? '') ?>" required>
+                                <input type="text" name="district" class="form-control" value="<?= htmlspecialchars($_POST['district'] ?? '') ?>">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Tỉnh/Thành phố <span class="text-danger">*</span></label>
-                                <input type="text" name="city" class="form-control" value="<?= htmlspecialchars($_POST['city'] ?? '') ?>" required>
+                                <input type="text" name="city" class="form-control" value="<?= htmlspecialchars($_POST['city'] ?? '') ?>">
                             </div>
                         </div>
 
@@ -140,16 +141,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    document.getElementById('confirm_password').addEventListener('input', function() {
-        const pw = document.getElementById('password').value;
-        const msg = document.getElementById('pwMatch');
-        if (this.value === pw) { msg.className = 'form-text text-success'; msg.textContent = '✓ Mật khẩu khớp'; }
-        else { msg.className = 'form-text text-danger'; msg.textContent = '✗ Mật khẩu không khớp'; }
-    });
     function validateForm() {
-        const pw = document.getElementById('password').value;
-        const cpw = document.getElementById('confirm_password').value;
-        if (pw !== cpw) { alert('Mật khẩu xác nhận không khớp!'); return false; }
+        const errors = [];
+        const username = document.querySelector('[name=username]').value.trim();
+        const fullname = document.querySelector('[name=full_name]').value.trim();
+        const email    = document.querySelector('[name=email]').value.trim();
+        const phone    = document.querySelector('[name=phone]').value.trim();
+        const pw       = document.getElementById('password').value;
+        const cpw      = document.getElementById('confirm_password').value;
+        const address  = document.querySelector('[name=address]').value.trim();
+        const ward     = document.querySelector('[name=ward]').value.trim();
+        const district = document.querySelector('[name=district]').value.trim();
+        const city     = document.querySelector('[name=city]').value.trim();
+
+        if (!username) errors.push('• Tên đăng nhập không được để trống');
+        else if (username.length < 4) errors.push('• Tên đăng nhập phải có ít nhất 4 ký tự');
+        else if (!/^[a-zA-Z0-9_]+$/.test(username)) errors.push('• Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới');
+
+        if (!fullname) errors.push('• Họ và tên không được để trống');
+
+        if (!pw) errors.push('• Mật khẩu không được để trống');
+        else if (pw.length < 6) errors.push('• Mật khẩu phải có ít nhất 6 ký tự');
+
+        if (!cpw) errors.push('• Vui lòng xác nhận mật khẩu');
+        else if (pw !== cpw) errors.push('• Mật khẩu xác nhận không khớp với mật khẩu đã nhập');
+
+        if (!email) errors.push('• Email không được để trống');
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('• Địa chỉ email không hợp lệ (VD: ten@email.com)');
+
+        if (!phone) errors.push('• Số điện thoại không được để trống');
+        else if (!/^0[0-9]{9,10}$/.test(phone)) errors.push('• Số điện thoại phải bắt đầu bằng số 0 và có 10-11 chữ số (VD: 0901234567)');
+
+        if (!address) errors.push('• Địa chỉ (số nhà, tên đường) không được để trống');
+        if (!ward) errors.push('• Phường/Xã không được để trống');
+        if (!district) errors.push('• Quận/Huyện không được để trống');
+        if (!city) errors.push('• Tỉnh/Thành phố không được để trống');
+
+        if (errors.length > 0) {
+            // Show errors in a styled div instead of alert
+            let box = document.getElementById('jsErrors');
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'jsErrors';
+                document.querySelector('form').prepend(box);
+            }
+            box.className = 'alert alert-danger mb-3';
+            box.innerHTML = '<strong><i class="bi bi-exclamation-circle me-2"></i>Vui lòng kiểm tra lại:</strong><ul class="mb-0 mt-2">'
+                + errors.map(e => '<li>' + e.slice(2) + '</li>').join('') + '</ul>';
+            box.scrollIntoView({behavior: 'smooth', block: 'center'});
+            return false;
+        }
         return true;
     }
     </script>
