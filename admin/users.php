@@ -12,17 +12,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $password = $_POST['password'] ?? '';
         $fullname = sanitize($conn, $_POST['full_name'] ?? '');
         $email    = sanitize($conn, $_POST['email'] ?? '');
+        $phone    = sanitize($conn, $_POST['phone'] ?? '');
+        $address  = sanitize($conn, $_POST['address'] ?? '');
+        $ward     = sanitize($conn, $_POST['ward'] ?? '');
+        $district = sanitize($conn, $_POST['district'] ?? '');
+        $city     = sanitize($conn, $_POST['city'] ?? '');
         $role     = sanitize($conn, $_POST['role'] ?? 'customer');
 
         if (!$username || !$password || !$fullname) {
-            $msg = '<div class="alert alert-danger">Vui lòng nhập đầy đủ thông tin.</div>';
+            $msg = '<div class="alert alert-danger">Vui lòng nhập đầy đủ thông tin bắt buộc.</div>';
         } else {
             $check = $conn->query("SELECT id FROM users WHERE username='$username'");
             if ($check->num_rows > 0) {
                 $msg = '<div class="alert alert-danger">Tên đăng nhập đã tồn tại.</div>';
             } else {
                 $hashed = password_hash($password, PASSWORD_DEFAULT);
-                $conn->query("INSERT INTO users (username,password,full_name,email,role) VALUES ('$username','$hashed','$fullname','$email','$role')");
+                $conn->query("INSERT INTO users (username,password,full_name,email,phone,address,ward,district,city,role)
+                    VALUES ('$username','$hashed','$fullname','$email','$phone','$address','$ward','$district','$city','$role')");
                 $msg = '<div class="alert alert-success">Đã thêm tài khoản thành công.</div>';
             }
         }
@@ -65,44 +71,67 @@ $users = $conn->query("SELECT * FROM users ORDER BY role DESC, created_at DESC")
 
 <div class="row g-4">
     <!-- Add User Form -->
-    <div class="col-md-4">
+    <div class="col-md-5">
         <div class="card border-0 shadow-sm">
             <div class="card-header fw-bold bg-white border-0"><i class="bi bi-person-plus me-2"></i>Thêm tài khoản</div>
             <div class="card-body">
                 <form method="POST">
                     <input type="hidden" name="action" value="add">
-                    <div class="mb-3">
-                        <label class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                        <input type="text" name="username" class="form-control" required>
+                    <h6 class="text-muted small fw-bold mb-2">THÔNG TIN TÀI KHOẢN</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small">Tên đăng nhập <span class="text-danger">*</span></label>
+                            <input type="text" name="username" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Họ tên <span class="text-danger">*</span></label>
+                            <input type="text" name="full_name" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">Mật khẩu <span class="text-danger">*</span></label>
+                            <input type="text" name="password" class="form-control form-control-sm" placeholder="Mật khẩu khởi tạo" required>
+                            <div class="form-text small">Người dùng cần đổi mật khẩu sau khi đăng nhập.</div>
+                        </div>
+                        <div class="col-8">
+                            <label class="form-label small">Email</label>
+                            <input type="email" name="email" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small">SĐT</label>
+                            <input type="text" name="phone" class="form-control form-control-sm" placeholder="0901...">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Vai trò</label>
+                            <select name="role" class="form-select form-select-sm">
+                                <option value="customer">Khách hàng</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                        <input type="text" name="password" class="form-control" placeholder="Mật khẩu khởi tạo" required>
-                        <div class="form-text">Người dùng cần đổi mật khẩu sau khi đăng nhập.</div>
+                    <h6 class="text-muted small fw-bold mb-2 mt-3">ĐỊA CHỈ GIAO HÀNG</h6>
+                    <div class="row g-2 mb-3">
+                        <div class="col-12">
+                            <label class="form-label small">Địa chỉ (số nhà, đường)</label>
+                            <input type="text" name="address" class="form-control form-control-sm" placeholder="VD: 123 Nguyễn Huệ">
+                        </div>
+                        <div class="col-4">
+                            <input type="text" name="ward" class="form-control form-control-sm" placeholder="Phường/Xã">
+                        </div>
+                        <div class="col-4">
+                            <input type="text" name="district" class="form-control form-control-sm" placeholder="Quận/Huyện">
+                        </div>
+                        <div class="col-4">
+                            <input type="text" name="city" class="form-control form-control-sm" placeholder="Tỉnh/TP">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Họ tên <span class="text-danger">*</span></label>
-                        <input type="text" name="full_name" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" class="form-control">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Vai trò</label>
-                        <select name="role" class="form-select">
-                            <option value="customer">Khách hàng</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Thêm tài khoản</button>
+                    <button type="submit" class="btn btn-primary w-100 btn-sm">Thêm tài khoản</button>
                 </form>
             </div>
         </div>
     </div>
 
     <!-- User list -->
-    <div class="col-md-8">
+    <div class="col-md-7">
         <div class="card border-0 shadow-sm">
             <div class="card-header fw-bold bg-white border-0"><i class="bi bi-people me-2"></i>Danh sách tài khoản</div>
             <div class="table-responsive">

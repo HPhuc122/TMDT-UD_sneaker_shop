@@ -109,20 +109,27 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
 <?php
 // Shared helper to render size checkboxes
 function renderSizeCheckboxes($existing_sizes_str) {
-    $presets = ['36','37','38','39','40','41','42','43','44','45'];
+    $presets  = ['36','37','38','39','40','41','42','43','44','45'];
     $selected = array_filter(array_map('trim', explode(',', $existing_sizes_str)));
-    $html = '<div class="d-flex flex-wrap gap-2 mb-2">';
+    $html  = '<div class="d-flex flex-wrap mb-2" style="gap:10px 8px;">';
     foreach ($presets as $s) {
-        $chk = in_array($s, $selected) ? 'checked' : '';
-        $html .= "<div class='form-check form-check-inline border rounded px-2 py-1 m-0' style='cursor:pointer'>
-            <input class='form-check-input' type='checkbox' name='sizes[]' value='$s' id='sz$s' $chk>
-            <label class='form-check-label small' for='sz$s'>$s</label>
-        </div>";
+        $chk   = in_array($s, $selected) ? 'checked' : '';
+        $bg    = in_array($s, $selected) ? 'background:#1a1a2e;color:#fff;border-color:#1a1a2e;' : 'background:#fff;color:#333;';
+        $html .= "<label style='display:inline-flex;align-items:center;gap:5px;border:1.5px solid #ccc;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:0.85rem;min-width:46px;justify-content:center;$bg'>
+            <input type='checkbox' name='sizes[]' value='$s' $chk style='display:none' onchange='updateSizeLabel(this)'>
+            $s
+        </label>";
     }
     $html .= '</div>';
-    // Extra custom sizes
     $extras = array_diff($selected, $presets);
-    $html .= '<input type="text" name="sizes_extra" class="form-control form-control-sm mt-1" placeholder="Thêm size khác, cách nhau bởi dấu phẩy (VD: 46,47)" value="' . implode(',', $extras) . '">';
+    $html .= '<input type="text" name="sizes_extra" class="form-control form-control-sm" placeholder="Thêm size khác, cách nhau bởi dấu phẩy (VD: 46,47)" value="' . implode(',', $extras) . '">';
+    $html .= '<script>
+function updateSizeLabel(cb){
+    var lbl=cb.parentElement;
+    if(cb.checked){lbl.style.background="#1a1a2e";lbl.style.color="#fff";lbl.style.borderColor="#1a1a2e";}
+    else{lbl.style.background="#fff";lbl.style.color="#333";lbl.style.borderColor="#ccc";}
+}
+</script>';
     return $html;
 }
 ?>

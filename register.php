@@ -7,6 +7,11 @@ if (isLoggedIn()) redirect('index.php');
 $error = '';
 $success = '';
 
+// Read success flash from GET (after PRG redirect - form is now empty)
+if (isset($_GET['success'])) {
+    $success = 'Đăng ký thành công! <a href="login.php">Đăng nhập ngay</a>';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = sanitize($conn, $_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -38,7 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("INSERT INTO users (username,password,full_name,email,phone,address,ward,district,city,role) VALUES (?,?,?,?,?,?,?,?,?,'customer')");
             $stmt->bind_param('sssssssss', $username, $hashed, $fullname, $email, $phone, $address, $ward, $district, $city);
             if ($stmt->execute()) {
-                $success = 'Đăng ký thành công! <a href="login.php">Đăng nhập ngay</a>';
+                // PRG: redirect to clear form fields completely
+                redirect('register.php?success=1');
             } else {
                 $error = 'Có lỗi xảy ra, vui lòng thử lại.';
             }

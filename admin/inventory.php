@@ -3,8 +3,13 @@
 require_once '_layout.php';
 adminHeader('Tồn kho & Báo cáo');
 
-// Low stock threshold
-$low_threshold = isset($_POST['threshold']) ? (int)$_POST['threshold'] : 5;
+// Low stock threshold - read from GET or POST, default 5
+$low_threshold = 5;
+if (isset($_POST['threshold']) && is_numeric($_POST['threshold'])) {
+    $low_threshold = max(1, (int)$_POST['threshold']);
+} elseif (isset($_GET['threshold']) && is_numeric($_GET['threshold'])) {
+    $low_threshold = max(1, (int)$_GET['threshold']);
+}
 
 // Query: stock at a specific date
 $stock_date = isset($_GET['stock_date']) ? sanitize($conn, $_GET['stock_date']) : date('Y-m-d');
@@ -203,18 +208,27 @@ $categories = $conn->query("SELECT * FROM categories ORDER BY name");
 
 <!-- Alert tab -->
 <?php elseif ($tab === 'alert'): ?>
-<form method="POST" class="row g-3 mb-4">
+<form method="GET" class="row g-3 mb-4">
     <input type="hidden" name="tab" value="alert">
-    <div class="col-md-3">
-        <label class="form-label">Ngưỡng cảnh báo (số lượng)</label>
+    <div class="col-md-4">
+        <label class="form-label fw-semibold">Ngưỡng cảnh báo (số lượng tồn kho)</label>
         <div class="input-group">
-            <input type="number" name="threshold" class="form-control" value="<?= $low_threshold ?>" min="1">
-            <button class="btn btn-warning">Áp dụng</button>
+            <input type="number" name="threshold" class="form-control" value="<?= $low_threshold ?>" min="1" max="9999">
+            <button class="btn btn-warning fw-semibold"><i class="bi bi-funnel me-1"></i>Áp dụng</button>
         </div>
+        <div class="form-text">Hiển thị sản phẩm có tồn kho ≤ ngưỡng này.</div>
     </div>
 </form>
 <?php
-$low_products = $conn->query("SELECT p.*, c.name as cat_name FROM products p JOIN categories c ON p.category_id=c.id WHERE p.status='active' AND p.stock_quantity <= $low_threshold ORDER BY p.stock_quantity ASC");
+// Query sản phẩm sắp hết hàng: stock_quantity <= threshold (bao gồm cả hết hàng = 0)
+$low_products = $conn->query(
+    "SELECT p.*, c.name as cat_name
+     FROM products p
+     JOIN categories c ON p.category_id = c.id
+     WHERE p.status = 'active'
+       AND p.stock_quantity <= $low_threshold
+     ORDER BY p.stock_quantity ASC, p.name ASC"
+);
 ?>
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-warning text-dark border-0 fw-bold">

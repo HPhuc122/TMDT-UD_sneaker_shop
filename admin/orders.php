@@ -7,12 +7,38 @@ $msg = '';
 
 // Update status
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
-    $id     = (int)$_POST['order_id'];
-    $status = sanitize($conn, $_POST['status']);
-    $allowed = ['pending','confirmed','delivered','cancelled'];
-    if (in_array($status, $allowed)) {
-        $conn->query("UPDATE orders SET status='$status' WHERE id=$id");
-        $msg = '<div class="alert alert-success">Đã cập nhật trạng thái đơn hàng.</div>';
+    $id        = (int)$_POST['order_id'];
+    $newStatus = sanitize($conn, $_POST['status']);
+    $allowed   = ['pending','confirmed','delivered','cancelled'];
+
+    if (in_array($newStatus, $allowed)) {
+        // Get current status before changing
+        $cur = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
+        $oldStatus = $cur ? $cur['status'] : '';
+
+        $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
+
+        // Restore stock if order is being cancelled (and wasn't already cancelled)
+        if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
+            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
+            while ($d = $details->fetch_assoc()) {
+                $pid = (int)$d['product_id'];
+                $qty = (int)$d['quantity'];
+                $conn->query("UPDATE products SET stock_quantity = stock_quantity + $qty WHERE id=$pid");
+            }
+            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã huỷ đơn hàng và hoàn lại tồn kho.</div>';
+        } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
+            // Re-deduct stock if un-cancelling an order
+            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
+            while ($d = $details->fetch_assoc()) {
+                $pid = (int)$d['product_id'];
+                $qty = (int)$d['quantity'];
+                $conn->query("UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $qty) WHERE id=$pid");
+            }
+            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+        } else {
+            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+        }
     }
 }
 
