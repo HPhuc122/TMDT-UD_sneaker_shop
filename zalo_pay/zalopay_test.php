@@ -1,73 +1,28 @@
 <?php
-// =====================================================
-// zalopay_test.php
-// Giả lập ZaloPay thanh toán thành công (sandbox)
-// =====================================================
-
+// zalopay_test.php — Sandbox only: mô phỏng kết quả ZaloPay
+// CHỈ dùng trong môi trường test/sandbox, KHÔNG đưa lên production
 require_once '../includes/db.php';
 require_once 'zalopay_config.php';
 
-$order_id = (int)($_GET['order_id'] ?? 0);
+if (!isLoggedIn()) redirect('../login.php');
 
-if (!$order_id) {
-    die("Thiếu order_id");
-}
+$order_id     = (int)($_GET['order_id'] ?? 0);
+$app_trans_id = $_GET['app_trans_id'] ?? '';
+$result       = $_GET['result'] ?? 'fail'; // 'success' hoặc 'fail'
+$user_id      = $_SESSION['user_id'];
 
-// Lấy đơn hàng
-$order = $conn->query("SELECT * FROM orders WHERE id=$order_id")->fetch_assoc();
+// Xác nhận đơn hàng thuộc về user đang đăng nhập
+$order = $conn->query("SELECT * FROM orders WHERE id=$order_id AND user_id=$user_id")->fetch_assoc();
+if (!$order) redirect('../cart.php');
 
-if (!$order) {
-    die("Không tìm thấy đơn hàng");
-}
-
-$app_trans_id = $order['app_trans_id'];
-
-if (!$app_trans_id) {
-    die("Đơn hàng chưa có app_trans_id");
-}
-
-// ====== TẠO DATA GIỐNG ZALOPAY CALLBACK ======
-$data = [
-    "app_id"       => ZALOPAY_APP_ID,
-    "app_trans_id" => $app_trans_id,
-    "zp_trans_id"  => rand(100000000, 999999999),
-    "amount"       => (int)$order['total_amount'],
-];
-
-$json_data = json_encode($data);
-
-// Tạo MAC bằng KEY2 (giống callback thật)
-$mac = hash_hmac('sha256', $json_data, ZALOPAY_KEY2);
-
-// Payload gửi đi
-$post = json_encode([
-    "data" => $json_data,
-    "mac"  => $mac
-]);
-
-// ====== GỌI CALLBACK ======
-$callback_url = ZALOPAY_CALLBACK_URL;
-
-$ch = curl_init($callback_url);
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => $post,
-    CURLOPT_HTTPHEADER     => ['Content-Type: application/json']
-]);
-
-$response = curl_exec($ch);
-$error    = curl_error($ch);
-
-curl_close($ch);
-
-// ====== KẾT QUẢ ======
-echo "<h3>Kết quả callback:</h3>";
-echo "<pre>$response</pre>";
-
-if ($error) {
-    echo "<p style='color:red'>Lỗi: $error</p>";
+if ($result === 'success') {
+    // Cập nhật app_trans_id và status
+    $ats = $conn->real_escape_string($app_trans_id);
+    $conn->query("UPDATE orders SET app_trans_id='$ats', status='confirmed' WHERE id=$order_id");
+    // Xóa giỏ hàng
+    $_SESSION['cart'] = [];
+    redirect('../checkout.php?zp_success=' . $order_id);
 } else {
-    echo "<p style='color:green'>✔ Giả lập thanh toán thành công!</p>";
-    echo "<a href='zalopay_return.php?status=1&apptransid=$app_trans_id'>➡ Xem trang kết quả</a>";
+    // Thất bại: giữ nguyên, giỏ hàng vẫn còn
+    redirect('../checkout.php?zp_fail=1&order_id=' . $order_id);
 }
