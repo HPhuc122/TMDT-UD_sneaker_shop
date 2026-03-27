@@ -33,22 +33,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        $order_code = generateCode('DH');
-        $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
-            foreach ($cart as $item) {
-                $pid   = (int)$item['product_id'];
-                $qty   = (int)$item['qty'];
-                $price = (float)$item['price'];
-                $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
-                $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
-            }
-            $_SESSION['cart'] = [];
-            redirect('checkout.php?success=' . $order_id);
+        // Nếu thanh toán trực tuyến (VNPay), lưu thông tin vào session rồi chuyển hướng (không tạo đơn chưa)
+        if ($payment === 'online') {
+            $_SESSION['cart_backup'] = $cart;
+            $_SESSION['vnpay_info'] = [
+                'receiver_name'      => $receiver,
+                'receiver_phone'     => $phone,
+                'shipping_address'   => $address,
+                'ward'               => $ward,
+                'district'           => $district,
+                'city'               => $city,
+                'total_amount'       => $total,
+                'notes'              => $notes
+            ];
+            redirect('vnpay/vnpay_create_payment.php');
         } else {
-            $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
+            // Thanh toán COD hoặc chuyển khoản → tạo đơn hàng ngay
+            $order_code = generateCode('DH');
+            $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+            if ($stmt->execute()) {
+                $order_id = $conn->insert_id;
+                foreach ($cart as $item) {
+                    $pid   = (int)$item['product_id'];
+                    $qty   = (int)$item['qty'];
+                    $price = (float)$item['price'];
+                    $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
+                    $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
+                }
+                $_SESSION['cart'] = [];
+                redirect('checkout.php?success=' . $order_id);
+            } else {
+                $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
+            }
         }
     }
 }
@@ -162,16 +179,10 @@ require_once 'includes/header.php';
                             <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
                             <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
                         </div>
-                        <div class="form-check mb-3 p-3 border rounded">
-                            <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
-                            <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
-                        </div>
-                        <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
-                            Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
-                        </div>
+                       
                         <div class="form-check p-3 border rounded">
                             <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
-                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến (MoMo, VNPay...)</label>
+                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến (VNPay)</label>
                         </div>
                     </div>
                 </div>
