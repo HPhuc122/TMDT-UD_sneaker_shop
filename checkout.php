@@ -13,6 +13,9 @@ $total = 0;
 foreach ($cart as $item) $total += $item['price'] * $item['qty'];
 
 $error = '';
+if (isset($_GET['zp_error'])) {
+    $error = 'ZaloPay: ' . htmlspecialchars($_GET['zp_error']);
+}
 $order_done = false;
 $ord = null;
 
@@ -46,7 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
             }
             $_SESSION['cart'] = [];
-            redirect('checkout.php?success=' . $order_id);
+ 
+            if ($payment === 'online') {
+                // → Chuyển sang ZaloPay
+                redirect('zalo_pay/zalopay_create.php?order_id=' . $order_id);
+            } else {
+                // COD hoặc chuyển khoản → trang xác nhận bình thường
+                redirect('checkout.php?success=' . $order_id);
+            }
         } else {
             $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
         }
