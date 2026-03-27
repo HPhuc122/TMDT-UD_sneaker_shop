@@ -7,7 +7,7 @@ adminHeader('Dashboard');
 $total_products = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
 $total_orders   = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
 $pending_orders = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
-$total_revenue  = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status='delivered'")->fetch_assoc()['s'];
+$total_revenue  = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status IN ('confirmed','delivered')")->fetch_assoc()['s'];
 $total_users    = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
 // Low stock
@@ -60,7 +60,7 @@ $statusLabel = ['pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','del
                 <i class="bi bi-currency-dollar fs-2 opacity-75"></i>
                 <div>
                     <div class="fs-4 fw-bold"><?= number_format($total_revenue/1000000,1) ?>M</div>
-                    <div class="small opacity-75">Doanh thu (đã giao)</div>
+                    <div class="small opacity-75">Doanh thu (đã xác nhận)</div>
                 </div>
             </div>
         </div>
