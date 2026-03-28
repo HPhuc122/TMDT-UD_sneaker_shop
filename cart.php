@@ -14,13 +14,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($_SESSION['cart'][$idx]);
                 continue;
             }
-            $vid = $_SESSION['cart'][$idx]['variant_id'];
-            $res = $conn->query("SELECT stock_quantity FROM product_varieties WHERE id = $vid");
-            $row = $res->fetch_assoc();
-            if ($row) {
-                $stock = (int)$row['stock_quantity'];
-                if ($qty > $stock) {
-                    $qty = $stock;
+            $vid = $_SESSION['cart'][$idx]['variant_id'] ?? 0;
+            if ($vid > 0) {
+                $res = $conn->query("SELECT stock_quantity FROM product_varieties WHERE id = $vid");
+                $row = $res->fetch_assoc();
+                if ($row) {
+                    $stock = (int)$row['stock_quantity'];
+                    if ($qty > $stock) {
+                        $qty = $stock;
+                    }
                 }
             }
             $_SESSION['cart'][$idx]['qty'] = $qty;
