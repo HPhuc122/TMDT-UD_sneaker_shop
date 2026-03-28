@@ -75,7 +75,7 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
 <body>
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
         <div class="container">
-            <a class="navbar-brand" href="/sneaker_shop/index.php">
+            <a class="navbar-brand" href="index.php">
                 <i class="bi bi-lightning-fill"></i> SneakerShop
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -84,28 +84,28 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/sneaker_shop/index.php">Trang chủ</a>
+                        <a class="nav-link" href="index.php">Trang chủ</a>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Danh mục</a>
                         <ul class="dropdown-menu">
                             <?php while ($cat = $cats->fetch_assoc()): ?>
-                                <li><a class="dropdown-item" href="/sneaker_shop/category.php?id=<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></a></li>
+                                <li><a class="dropdown-item" href="category.php?id=<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></a></li>
                             <?php endwhile; ?>
                         </ul>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/sneaker_shop/search.php">Tìm kiếm</a>
+                        <a class="nav-link" href="search.php">Tìm kiếm</a>
                     </li>
                 </ul>
-                <form class="d-flex me-3" action="/sneaker_shop/search.php" method="GET">
+                <form class="d-flex me-3" action="search.php" method="GET">
                     <input class="form-control form-control-sm me-2" type="search" name="q" placeholder="Tìm sneaker..." style="width:200px">
                     <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-search"></i></button>
                 </form>
                 <ul class="navbar-nav align-items-center">
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item">
-                            <a class="nav-link px-2" href="/sneaker_shop/cart.php" style="line-height:1">
+                            <a class="nav-link px-2" href="cart.php" style="line-height:1">
                                 <i class="bi bi-cart3 fs-5" style="vertical-align:middle"></i>
                             </a>
                         </li>
@@ -115,11 +115,11 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                                 <span><?= htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']) ?></span>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="/sneaker_shop/my_orders.php"><i class="bi bi-bag-check me-2"></i>Đơn hàng của tôi</a></li>
+                                <li><a class="dropdown-item" href="my_orders.php"><i class="bi bi-bag-check me-2"></i>Đơn hàng của tôi</a></li>
                                 <li>
                                     <hr class="dropdown-divider">
                                 </li>
-                                <li><a class="dropdown-item text-danger" href="/sneaker_shop/login.php?action=logout"><i class="bi bi-box-arrow-right me-2"></i>Đăng xuất</a></li>
+                                <li><a class="dropdown-item text-danger" href="login.php?action=logout"><i class="bi bi-box-arrow-right me-2"></i>Đăng xuất</a></li>
                             </ul>
                         </li>
                     <?php else: ?>
@@ -129,7 +129,7 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                             </a>
                         </li>
                         <li class="nav-item d-flex align-items-center">
-                            <a class="btn btn-primary btn-sm px-3" href="/sneaker_shop/register.php">Đăng ký</a>
+                            <a class="btn btn-primary btn-sm px-3" href="register.php">Đăng ký</a>
                         </li>
                     <?php endif; ?>
                 </ul>
