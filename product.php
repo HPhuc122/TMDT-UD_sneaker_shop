@@ -46,42 +46,59 @@ $genderLabel = ['nam' => 'Nam', 'nu' => 'Nữ', 'unisex' => 'Unisex'];
 
 // Handle POST — must be before header.php outputs HTML
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
+
     if (!isLoggedIn()) {
         redirect('login.php?redirect=product.php?id=' . $id);
     }
+
     $qty = max(1, (int)$_POST['quantity']);
     $selected_size = sanitize($conn, $_POST['selected_size'] ?? '');
 
-    if (!empty($size) && !$selected_size) {
+    if (empty($selected_size)) {
         redirect('product.php?id=' . $id . '&err=size');
-    } elseif ($qty > $product['stock_quantity']) {
-        redirect('product.php?id=' . $id . '&err=stock');
-    } else {
-        if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
-        $cart_key = $id . '_' . $selected_size;
-        $found = false;
-        foreach ($_SESSION['cart'] as &$item) {
-            if ($item['cart_key'] === $cart_key) {
-                $item['qty'] = min($item['qty'] + $qty, $product['stock_quantity']);
-                $found = true;
-                break;
-            }
-        }
-        unset($item);
-        if (!$found) {
-            $_SESSION['cart'][] = [
-                'cart_key'   => $cart_key,
-                'product_id' => $id,
-                'name'       => $product['name'] . ($selected_size ? " (Size $selected_size)" : ''),
-                'price'      => $product['sell_price'],
-                'qty'        => $qty,
-                'image'      => $product['image'],
-                'size'       => $selected_size,
-            ];
-        }
-        redirect('product.php?id=' . $id . '&added=1' . ($selected_size ? '&sz=' . urlencode($selected_size) : ''));
     }
+
+    // kiểm tra tồn kho theo size
+    $stock_sql = "SELECT stock_quantity 
+                  FROM product_varieties pv
+                  JOIN sizes s ON s.id = pv.size_id
+                  WHERE pv.product_id = $id AND s.size = '$selected_size'";
+
+    $stock_row = $conn->query($stock_sql)->fetch_assoc();
+    $stock = $stock_row['stock_quantity'] ?? 0;
+
+    if ($qty > $stock) {
+        redirect('product.php?id=' . $id . '&err=stock');
+    }
+
+    if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
+
+    $cart_key = $id . '_' . $selected_size;
+    $found = false;
+
+    foreach ($_SESSION['cart'] as &$item) {
+        if ($item['cart_key'] === $cart_key) {
+            $item['qty'] += $qty;
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        $_SESSION['cart'][] = [
+            'cart_key'   => $cart_key,
+            'product_id' => $id,
+            'name'       => $product['name'] . " (Size $selected_size)",
+            'price'      => $product['sell_price'],
+            'qty'        => $qty,
+            'image'      => $product['image'],
+            'size'       => $selected_size,
+        ];
+    }
+
+    redirect('product.php?id=' . $id . '&added=1');
 }
+
 
 // Flash messages via GET (after PRG redirect)
 $msg = '';
@@ -173,23 +190,13 @@ require_once 'includes/header.php';
                 <div class="p-3 rounded-3 mb-3 d-flex align-items-center gap-3" style="background:#fff3ee">
                     <div class="fs-1 fw-bold" style="color:#ff6b35"><?= formatPrice($product['sell_price']) ?></div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">
-                        Size:
-                        <span id="sizeSelected" class="ms-2 text-muted small"></span>
-                    </label>
-
-                    <div id="sizeContainer" class="d-flex flex-wrap gap-2"></div>
-
-                    <input type="hidden" name="selected_size" id="selectedSizeInput">
-                    <input type="hidden" name="selected_color" id="selectedColorInput">
-                </div>
-
                 <!-- Stock status -->
-                <?php if ($product['stock_quantity'] > 0): ?>
+                <?php if (!empty($sizes_by_color)): ?>
                     <p class="mb-3">
-                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
-                            <i class="bi bi-check-circle-fill me-1"></i>Còn hàng &nbsp;·&nbsp; <?= $product['stock_quantity'] ?> <?= htmlspecialchars($product['unit']) ?>
+                        <span id="stockLabel"
+                            class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            Vui lòng chọn size
                         </span>
                     </p>
                 <?php else: ?>
@@ -219,6 +226,7 @@ require_once 'includes/header.php';
                             <div id="sizeContainer" class="d-flex flex-wrap gap-2 mt-2"></div>
 
                             <input type="hidden" name="selected_size" id="selectedSizeInput">
+                            <input type="hidden" name="selected_color" id="selectedColorInput">
                         </div>
 
                         <!-- Quantity -->
@@ -353,16 +361,28 @@ require_once 'includes/header.php';
             }
 
             el.onclick = function() {
-                document.querySelectorAll('#sizeContainer button').forEach(b => {
-                    b.classList.remove('btn-dark');
-                    b.classList.add('btn-outline-secondary');
-                });
 
-                this.classList.remove('btn-outline-secondary');
-                this.classList.add('btn-dark');
+    document.querySelectorAll('#sizeContainer button').forEach(b => {
+        b.classList.remove('btn-dark');
+        b.classList.add('btn-outline-secondary');
+    });
 
-                document.getElementById('selectedSizeInput').value = s.size;
-            };
+    this.classList.remove('btn-outline-secondary');
+    this.classList.add('btn-dark');
+
+    document.getElementById('selectedSizeInput').value = s.size;
+
+    // Cập nhật tồn kho theo size
+    const stockLabel = document.getElementById('stockLabel');
+
+    if (s.stock > 0) {
+        stockLabel.innerHTML =
+            '<i class="bi bi-check-circle-fill me-1"></i> Còn hàng · ' + s.stock + ' đôi';
+    } else {
+        stockLabel.innerHTML =
+            '<i class="bi bi-x-circle-fill me-1"></i> Hết hàng';
+    }
+};
 
             container.appendChild(el);
         });
