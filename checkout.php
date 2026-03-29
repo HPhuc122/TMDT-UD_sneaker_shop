@@ -34,11 +34,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
         $order_code = generateCode('DH');
+        $conn->begin_transaction();
         $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
         if ($stmt->execute()) {
             $order_id = $conn->insert_id;
-            $conn->begin_transaction();
+
             try {
                 foreach ($cart as $item) {
 
@@ -81,9 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->rollback();
                 $error = $e->getMessage();
             }
-            $_SESSION['cart'] = [];
-            redirect('checkout.php?success=' . $order_id);
         } else {
+            $conn->rollback();
             $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
         }
     }
