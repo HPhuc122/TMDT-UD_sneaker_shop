@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
             $stmt->execute();
             $order_id = $conn->insert_id;
+<<<<<<< HEAD
 
             // INSERT ORDER DETAILS
             foreach ($cart as $item) {
@@ -75,6 +76,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         WHERE product_id=? AND size_id=? AND color_id=?");
                 $stmt->bind_param("iiii", $qty, $pid, $size, $color);
                 $stmt->execute();
+=======
+            $conn->begin_transaction();
+            try {
+                foreach ($cart as $item) {
+
+                    $pid   = (int)$item['product_id'];
+                    $size  = (int)$item['size_id'];
+                    $color = (int)$item['color_id'];
+                    $qty   = (int)$item['qty'];
+                    $price = (float)$item['price'];
+
+                    //CHECK STOCK
+                    $stmt = $conn->prepare("SELECT stock_quantity 
+                                            FROM product_varieties 
+                                            WHERE product_id=? AND size_id=? AND color_id=?
+                                            FOR UPDATE");
+                    $stmt->bind_param("iii", $pid, $size, $color);
+                    $stmt->execute();
+                    $stock = $stmt->get_result()->fetch_assoc();
+
+                    if (!$stock || $stock['stock_quantity'] < $qty) {
+                        throw new Exception("Sản phẩm không đủ hàng!");
+                    }
+                    //INSERT ORDER DETAIL
+                    $stmt = $conn->prepare("INSERT INTO order_details (order_id, product_id, size_id, color_id, quantity, unit_price) 
+                                            VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("iiiiid", $order_id, $pid, $size, $color, $qty, $price);
+                    $stmt->execute();
+
+                    //TRỪ KHO
+                    $stmt = $conn->prepare("UPDATE product_varieties 
+                                            SET stock_quantity = stock_quantity - ? 
+                                            WHERE product_id=? AND size_id=? AND color_id=?");
+                    $stmt->bind_param("iiii", $qty, $pid, $size, $color);
+                    $stmt->execute();
+                }
+
+                $conn->commit();
+                $_SESSION['cart'] = [];
+                redirect('checkout.php?success=' . $order_id);
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = $e->getMessage();
+>>>>>>> bca4bda588cd605b0faa4a8862ea22cb3e24aefe
             }
             $conn->commit();
             $_SESSION['cart'] = [];
