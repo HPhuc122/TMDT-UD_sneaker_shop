@@ -85,14 +85,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
     }
 
     if (!$found) {
+        // Lấy variant theo size đã chọn
+        $variant_sql = "SELECT pv.*, s.size, c.name as color
+                        FROM product_varieties pv
+                        JOIN sizes s ON s.id = pv.size_id
+                        JOIN colors c ON c.id = pv.color_id
+                        WHERE pv.product_id = $id AND s.size = '$selected_size'";
+        $variant = $conn->query($variant_sql)->fetch_assoc();
+        if (!$variant) {
+            redirect('product.php?id=' . $id . '&err=stock');
+        }
         $_SESSION['cart'][] = [
-            'cart_key'   => $cart_key,
-            'product_id' => $id,
-            'name'       => $product['name'] . " (Size $selected_size)",
-            'price'      => $product['sell_price'],
-            'qty'        => $qty,
-            'image'      => $product['image'],
-            'size'       => $selected_size,
+            'product_id' => $product['id'],
+            'variant_id' => $variant['id'],
+            'name'  => $product['name'],
+            'price' => $product['sell_price'],
+            'qty'   => $qty,
+            'image' => $product['image'],
+                
+            // QUAN TRỌNG (checkout cần)
+            'size_id'  => $variant['size_id'],
+            'color_id' => $variant['color_id'],
+                
+            // Hiển thị trong cart
+            'size'  => $variant['size'],
+            'color' => $variant['color'],
+            'cart_key' => $id . '_' . $variant['size_id'] . '_' . $variant['color_id']
         ];
     }
 

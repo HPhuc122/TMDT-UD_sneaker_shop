@@ -27,64 +27,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $city      = $use_saved ? $user['city']      : sanitize($conn, $_POST['city'] ?? '');
     $payment   = sanitize($conn, $_POST['payment_method'] ?? 'cash');
     $notes     = sanitize($conn, $_POST['notes'] ?? '');
-
     if (!$receiver || !$phone || !$address || !$ward || !$district || !$city) {
         $error = 'Vui lòng điền đầy đủ thông tin giao hàng.';
-    } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
-        $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        $order_code = generateCode('DH');
         $conn->begin_transaction();
-        $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
-        if ($stmt->execute()) {
+        try {
+            $order_code = generateCode('DH');
+
+            // INSERT ORDER
+            $stmt = $conn->prepare("INSERT INTO orders 
+                (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+            $stmt->execute();
             $order_id = $conn->insert_id;
 
-            try {
-                foreach ($cart as $item) {
+            // INSERT ORDER DETAILS
+            foreach ($cart as $item) {
+                $pid   = (int)$item['product_id'];
+                $size  = (int)$item['size_id'];
+                $color = (int)$item['color_id'];
+                $qty   = (int)$item['qty'];
+                $price = (float)$item['price'];
 
-                    $pid   = (int)$item['product_id'];
-                    $size  = (int)$item['size_id'];
-                    $color = (int)$item['color_id'];
-                    $qty   = (int)$item['qty'];
-                    $price = (float)$item['price'];
-
-                    //CHECK STOCK
-                    $stmt = $conn->prepare("SELECT stock_quantity 
-                                            FROM product_varieties 
-                                            WHERE product_id=? AND size_id=? AND color_id=?
-                                            FOR UPDATE");
-                    $stmt->bind_param("iii", $pid, $size, $color);
-                    $stmt->execute();
-                    $stock = $stmt->get_result()->fetch_assoc();
-
-                    if (!$stock || $stock['stock_quantity'] < $qty) {
-                        throw new Exception("Sản phẩm không đủ hàng!");
-                    }
-                    //INSERT ORDER DETAIL
-                    $stmt = $conn->prepare("INSERT INTO order_details (order_id, product_id, size_id, color_id, quantity, unit_price) 
-                                            VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("iiiiid", $order_id, $pid, $size, $color, $qty, $price);
-                    $stmt->execute();
-
-                    //TRỪ KHO
-                    $stmt = $conn->prepare("UPDATE product_varieties 
-                                            SET stock_quantity = stock_quantity - ? 
-                                            WHERE product_id=? AND size_id=? AND color_id=?");
-                    $stmt->bind_param("iiii", $qty, $pid, $size, $color);
-                    $stmt->execute();
+                // CHECK STOCK
+                $stmt = $conn->prepare("SELECT stock_quantity 
+                                        FROM product_varieties 
+                                        WHERE product_id=? AND size_id=? AND color_id=? 
+                                        FOR UPDATE");
+                $stmt->bind_param("iii", $pid, $size, $color);
+                $stmt->execute();
+                $stock = $stmt->get_result()->fetch_assoc();
+                if (!$stock || $stock['stock_quantity'] < $qty) {
+                    throw new Exception("Sản phẩm không đủ hàng!");
                 }
 
-                $conn->commit();
-                $_SESSION['cart'] = [];
-                redirect('checkout.php?success=' . $order_id);
-            } catch (Exception $e) {
-                $conn->rollback();
-                $error = $e->getMessage();
+                // INSERT ORDER DETAIL
+                $stmt = $conn->prepare("INSERT INTO order_details 
+                    (order_id, product_id, size_id, color_id, quantity, unit_price) 
+                    VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("iiiiid", $order_id, $pid, $size, $color, $qty, $price);
+                $stmt->execute();
+
+                // UPDATE STOCK
+                $stmt = $conn->prepare("UPDATE product_varieties 
+                                        SET stock_quantity = stock_quantity - ? 
+                                        WHERE product_id=? AND size_id=? AND color_id=?");
+                $stmt->bind_param("iiii", $qty, $pid, $size, $color);
+                $stmt->execute();
             }
-        } else {
+            $conn->commit();
+            $_SESSION['cart'] = [];
+            redirect('checkout.php?success=' . $order_id);
+        } catch (Exception $e) {
             $conn->rollback();
-            $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
+            $error = $e->getMessage();
         }
     }
 }
