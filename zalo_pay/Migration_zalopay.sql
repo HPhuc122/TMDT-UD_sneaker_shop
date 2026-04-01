@@ -11,6 +11,11 @@ ALTER TABLE `orders`
   ADD COLUMN `zp_trans_id` VARCHAR(100) DEFAULT NULL
       COMMENT 'Mã giao dịch ZaloPay trả về sau khi thanh toán thành công' AFTER `app_trans_id`;
 
+ALTER TABLE `orders`
+  MODIFY COLUMN `status`
+    ENUM('awaiting_payment','pending','confirmed','delivered','cancelled')
+    DEFAULT 'pending';
+
 -- Index để tìm nhanh theo app_trans_id trong callback
 ALTER TABLE `orders`
   ADD INDEX `idx_app_trans_id` (`app_trans_id`);

@@ -1,15 +1,12 @@
 <?php
-// =====================================================
-// zalopay_return.php — FIX CUỐI CÙNG
-// =====================================================
+// zalopay_return.php — Trừ tồn kho khi thành công, giữ đơn awaiting_payment khi thất bại
 require_once '../includes/db.php';
 require_once 'zalopay_config.php';
 
 $status       = (int)($_GET['status'] ?? -1);
 $app_trans_id = $conn->real_escape_string($_GET['apptransid'] ?? '');
 
-// ── Tìm đơn hàng theo app_trans_id ────────────────────────────────────────
-// KHÔNG dùng user_id vì session có thể mất khi redirect từ ZaloPay domain
+// Tìm đơn hàng theo app_trans_id (không dùng user_id vì session có thể mất)
 $order = null;
 if ($app_trans_id) {
     $order = $conn->query(
@@ -17,50 +14,47 @@ if ($app_trans_id) {
     )->fetch_assoc();
 }
 
-// ── Xác định thành công ────────────────────────────────────────────────────
-// ROOT CAUSE FIX: ZaloPay sandbox checksum không ổn định (KEY1/KEY2 đều fail)
-// → Bỏ hoàn toàn checksum verification trong sandbox
-// → Chỉ cần: ZaloPay báo status=1 VÀ tìm được đơn hàng trong DB
-//
-// Lý do an toàn: app_trans_id là unique, được tạo bởi server của chúng ta,
-// ZaloPay trả đúng app_trans_id → đây là giao dịch hợp lệ
+// Xác định thành công: ZaloPay báo status=1 VÀ tìm được đơn hàng trong DB
 $success = ($status === 1) && ($order !== null);
 
-// ── Xử lý kết quả ─────────────────────────────────────────────────────────
-if ($success) {
+if ($success && $order) {
     // ✅ THÀNH CÔNG
     $_SESSION['cart'] = [];
 
-    // Cập nhật DB nếu callback chưa kịp về
-    // LƯU Ý: KHÔNG lấy zp_trans_id từ return URL — param đó không có ở đây
-    //         zp_trans_id sẽ được callback server-to-server cập nhật sau
+    // Trừ tồn kho LẦN ĐẦU (ZaloPay không trừ lúc tạo đơn)
+    // Dùng payment_status != 'paid' để tránh trừ 2 lần nếu callback về trước
     if ($order['payment_status'] !== 'paid') {
-        $conn->query("UPDATE orders
-                      SET status         = 'confirmed',
-                          payment_status = 'paid'
-                      WHERE id = {$order['id']}");
-        // Reload để lấy data mới nhất
-        $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
-    }
-
-} else {
-    // ❌ THẤT BẠI / HỦY
-    // Chỉ xóa đơn nếu thực sự thất bại (status != 1) VÀ đơn vẫn còn pending
-    // KHÔNG xóa nếu đơn đã paid (callback có thể đã cập nhật trước)
-    if ($order && $order['payment_status'] === 'pending') {
-        // Hoàn tồn kho
         $items = $conn->query(
             "SELECT product_id, quantity FROM order_details WHERE order_id={$order['id']}"
         );
         while ($item = $items->fetch_assoc()) {
-            $conn->query("UPDATE products
-                          SET stock_quantity = stock_quantity + {$item['quantity']}
-                          WHERE id = {$item['product_id']}");
+            $conn->query(
+                "UPDATE products
+                 SET stock_quantity = stock_quantity - {$item['quantity']}
+                 WHERE id = {$item['product_id']} AND stock_quantity >= {$item['quantity']}"
+            );
         }
-        $conn->query("DELETE FROM order_details WHERE order_id={$order['id']}");
-        $conn->query("DELETE FROM orders WHERE id={$order['id']}");
-        $order = null;
+        $conn->query(
+            "UPDATE orders
+             SET status         = 'confirmed',
+                 payment_status = 'paid'
+             WHERE id = {$order['id']} AND payment_status != 'paid'"
+        );
     }
+
+    // Reload dữ liệu mới nhất
+    $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
+
+} elseif (!$success && $order) {
+    // ❌ THẤT BẠI / HỦY / BACK
+    // KHÔNG xóa đơn, KHÔNG hoàn tồn kho (chưa trừ lần nào)
+    // Chuyển sang trạng thái "Chờ thanh toán" để user có thể thanh toán lại
+    if ($order['payment_status'] !== 'paid') {
+        $conn->query(
+            "UPDATE orders SET status='awaiting_payment' WHERE id={$order['id']}"
+        );
+    }
+    $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
 }
 
 $pageTitle = $success ? 'Thanh toán thành công' : 'Thanh toán thất bại';
@@ -102,56 +96,40 @@ require_once '../includes/header.php';
           </div>
           <hr class="my-2">
           <div class="small text-muted">
-            <p class="mb-1">
-              <i class="bi bi-person me-1"></i>
-              <?= htmlspecialchars($order['receiver_name']) ?> · <?= htmlspecialchars($order['receiver_phone']) ?>
-            </p>
-            <p class="mb-0">
-              <i class="bi bi-geo-alt me-1"></i>
-              <?= htmlspecialchars(
-                  $order['shipping_address'].', '.
-                  $order['ward'].', '.
-                  $order['district'].', '.
-                  $order['city']
-              ) ?>
-            </p>
+            <p class="mb-1"><i class="bi bi-person me-1"></i><?= htmlspecialchars($order['receiver_name']) ?> · <?= htmlspecialchars($order['receiver_phone']) ?></p>
+            <p class="mb-0"><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($order['shipping_address'].', '.$order['ward'].', '.$order['district'].', '.$order['city']) ?></p>
           </div>
         </div>
       </div>
 
       <div class="mt-4 d-flex gap-2 justify-content-center">
-        <!--
-          QUAN TRỌNG: KHÔNG dùng ../my_orders.php
-          header.php có <base href="/TMDT-UD_sneaker_shop/">
-          nên chỉ cần viết tên file, base tag tự thêm prefix đúng
-        -->
-        <a href="my_orders.php" class="btn btn-primary">
-          <i class="bi bi-bag-check me-2"></i>Xem đơn hàng
-        </a>
-        <a href="index.php" class="btn btn-outline-secondary">
-          <i class="bi bi-house me-2"></i>Trang chủ
-        </a>
+        <a href="my_orders.php" class="btn btn-primary"><i class="bi bi-bag-check me-2"></i>Xem đơn hàng</a>
+        <a href="index.php" class="btn btn-outline-secondary"><i class="bi bi-house me-2"></i>Trang chủ</a>
       </div>
     </div>
   </div>
 
   <?php else: ?>
-  <!-- ❌ THẤT BẠI / HỦY -->
+  <!-- ❌ THẤT BẠI / HỦY — Đơn vẫn còn, chờ thanh toán -->
   <div class="card border-0 shadow-sm">
     <div class="card-body text-center py-5">
-      <i class="bi bi-x-circle-fill text-danger" style="font-size:5rem"></i>
-      <h3 class="text-danger fw-bold mt-3">Thanh toán thất bại hoặc bị hủy</h3>
-      <p class="text-muted mb-1">Đơn hàng chưa được xử lý. Giỏ hàng của bạn vẫn còn nguyên.</p>
-      <p class="text-muted mb-4">Bạn có thể quay lại giỏ hàng và thử thanh toán lại bất kỳ lúc nào.</p>
+      <i class="bi bi-clock-history text-warning" style="font-size:5rem"></i>
+      <h3 class="text-warning fw-bold mt-3">Thanh toán chưa hoàn tất</h3>
+      <p class="text-muted mb-1">Đơn hàng của bạn vẫn được giữ lại.</p>
+      <p class="text-muted mb-4">Bạn có thể thanh toán lại hoặc đổi sang phương thức khác.</p>
+      <?php if ($order): ?>
+      <p class="mb-4">Mã đơn: <strong style="color:#ff6b35"><?= htmlspecialchars($order['order_code']) ?></strong></p>
       <div class="d-flex gap-2 justify-content-center">
-        <!-- KHÔNG dùng ../cart.php — base tag đã xử lý prefix -->
-        <a href="cart.php" class="btn btn-primary">
-          <i class="bi bi-cart3 me-2"></i>Quay lại giỏ hàng
+        <a href="checkout.php?repay=<?= $order['id'] ?>" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
         </a>
-        <a href="index.php" class="btn btn-outline-secondary">
-          <i class="bi bi-house me-2"></i>Trang chủ
+        <a href="zalo_pay/zalopay_create.php?order_id=<?= $order['id'] ?>" class="btn btn-primary" style="background:#0068ff;border-color:#0068ff">
+          <i class="bi bi-phone me-2"></i>Thanh toán lại qua ZaloPay
         </a>
       </div>
+      <?php else: ?>
+      <a href="cart.php" class="btn btn-primary"><i class="bi bi-cart3 me-2"></i>Quay lại giỏ hàng</a>
+      <?php endif; ?>
     </div>
   </div>
   <?php endif; ?>
