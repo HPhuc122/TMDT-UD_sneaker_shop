@@ -6,8 +6,12 @@ define('DB_PASS', '');
 define('DB_NAME', 'sneaker_shop');
 
 // Session names - admin uses separate cookie to allow simultaneous login
-define('USER_SESSION_NAME',  'sneaker_user_sess');
-define('ADMIN_SESSION_NAME', 'sneaker_admin_sess');
+if (!defined('USER_SESSION_NAME')) {
+    define('USER_SESSION_NAME', 'sneaker_user_sess');
+}
+if (!defined('ADMIN_SESSION_NAME')) {
+    define('ADMIN_SESSION_NAME', 'sneaker_admin_sess');
+}
 
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
 $conn->set_charset('utf8mb4');
