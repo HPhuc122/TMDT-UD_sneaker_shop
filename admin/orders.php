@@ -12,13 +12,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $allowed   = ['pending', 'confirmed', 'delivered', 'cancelled'];
 
     if (in_array($newStatus, $allowed)) {
-        // Get current status before changing
-        $cur = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
+        $cur       = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
         $oldStatus = $cur ? $cur['status'] : '';
 
         $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
 
-        // Restore stock if order is being cancelled (and wasn't already cancelled)
         if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
             $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
             while ($d = $details->fetch_assoc()) {
@@ -28,9 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                 $size_id  = (int)$_POST['size_id'];
                 $conn->query("UPDATE products_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
             }
-            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã huỷ đơn hàng và hoàn lại tồn kho.</div>';
         } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
-            // Re-deduct stock if un-cancelling an order
+            // Bỏ huỷ đơn → trừ lại tồn kho
             $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
             while ($d = $details->fetch_assoc()) {
                 $pid = (int)$d['product_id'];
@@ -71,10 +68,12 @@ $orders    = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON
 $params_o  = array_filter(['q' => $search_o, 'status' => $filter_status, 'date_from' => $date_from, 'date_to' => $date_to, 'sort_ward' => $sort_ward ? 1 : null]);
 
 // Detail view
-$detail_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$detail_id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $orderDetail = null;
 if ($detail_id) {
-    $orderDetail = $conn->query("SELECT o.*, u.full_name, u.email, u.phone FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$detail_id")->fetch_assoc();
+    $orderDetail = $conn->query(
+        "SELECT o.*, u.full_name, u.email, u.phone FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$detail_id"
+    )->fetch_assoc();
 }
 ?>
 

@@ -1,5 +1,4 @@
 <?php
-// my_orders.php — load db.php first so redirect works before HTML
 require_once 'includes/db.php';
 if (!isLoggedIn()) redirect('login.php?redirect=my_orders.php');
 
@@ -10,13 +9,14 @@ $user_id = $_SESSION['user_id'];
 $orders = $conn->query("SELECT * FROM orders WHERE user_id=$user_id ORDER BY created_at DESC");
 
 $statusLabels = [
-    'pending'   => ['Chờ xử lý',   'warning'],
-    'confirmed' => ['Đã xác nhận', 'info'],
-    'delivered' => ['Đã giao',     'success'],
-    'cancelled' => ['Đã huỷ',      'danger'],
+    'awaiting_payment' => ['Chờ thanh toán', 'secondary'],
+    'pending'          => ['Chờ xử lý',      'warning'],
+    'confirmed'        => ['Đã xác nhận',    'info'],
+    'delivered'        => ['Đã giao',        'success'],
+    'cancelled'        => ['Đã huỷ',         'danger'],
 ];
 
-$detail_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$detail_id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $orderDetail = null;
 if ($detail_id > 0) {
     $r = $conn->query("SELECT * FROM orders WHERE id=$detail_id AND user_id=$user_id");

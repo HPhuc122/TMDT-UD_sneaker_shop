@@ -4,11 +4,12 @@ require_once '_layout.php';
 adminHeader('Dashboard');
 
 // Stats
-$total_products = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
-$total_orders   = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
-$pending_orders = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
-$total_revenue  = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status='delivered'")->fetch_assoc()['s'];
-$total_users    = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
+$total_products    = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
+$total_orders      = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
+$pending_orders    = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
+$awaiting_orders   = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='awaiting_payment'")->fetch_assoc()['c'];
+$total_revenue     = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status IN ('confirmed','delivered')")->fetch_assoc()['s'];
+$total_users       = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
 // Low stock
 $low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
@@ -44,7 +45,15 @@ $statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận'
                 <i class="bi bi-bag-check fs-2 opacity-75"></i>
                 <div>
                     <div class="fs-4 fw-bold"><?= $total_orders ?></div>
-                    <div class="small opacity-75">Tổng đơn hàng <span class="badge bg-white text-danger"><?= $pending_orders ?> chờ</span></div>
+                    <div class="small opacity-75">
+                        Tổng đơn hàng
+                        <?php if ($pending_orders > 0): ?>
+                        <span class="badge bg-white text-danger"><?= $pending_orders ?> chờ xử lý</span>
+                        <?php endif; ?>
+                        <?php if ($awaiting_orders > 0): ?>
+                        <span class="badge bg-white text-secondary"><?= $awaiting_orders ?> chờ TT</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
