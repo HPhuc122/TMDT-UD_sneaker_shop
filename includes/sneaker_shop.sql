@@ -160,7 +160,8 @@ CREATE TABLE `orders` (
   `city` varchar(100) DEFAULT NULL,
   `payment_method` enum('cash','transfer','online') DEFAULT 'cash',
   `total_amount` decimal(15,2) DEFAULT 0.00,
-  `status` enum('pending','confirmed','delivered','cancelled') DEFAULT 'pending',
+  `status` enum('awaiting_payment','pending','confirmed','delivered','cancelled') DEFAULT 'pending',
+  `payment_status` enum('pending','paid') DEFAULT 'pending',
   `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -579,3 +580,12 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+
+
+
+--backup
+ALTER TABLE `orders`
+  MODIFY COLUMN `status`
+    ENUM('awaiting_payment','pending','confirmed','delivered','cancelled')
+    DEFAULT 'pending';

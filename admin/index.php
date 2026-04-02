@@ -23,8 +23,8 @@ $low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
 // Recent orders
 $recent_orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC LIMIT 8");
 
-$statusColor = ['pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
-$statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
+$statusColor = ['awaiting_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
 ?>
 
 <div class="row g-4 mb-4">
@@ -107,7 +107,7 @@ $statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận'
                                 <td><a href="orders.php?id=<?= $o['id'] ?>" class="fw-semibold text-decoration-none"><?= htmlspecialchars($o['order_code']) ?></a></td>
                                 <td><?= htmlspecialchars($o['full_name']) ?></td>
                                 <td><?= formatPrice($o['total_amount']) ?></td>
-                                <td><span class="badge bg-<?= $statusColor[$o['status']] ?>"><?= $statusLabel[$o['status']] ?></span></td>
+                                <td><span class="badge bg-<?= $statusColor[$o['status']] ?? 'dark' ?>"><?= $statusLabel[$o['status']] ?? 'Không xác định' ?></span></td>
                                 <td class="text-muted small"><?= date('d/m H:i', strtotime($o['created_at'])) ?></td>
                             </tr>
                         <?php endwhile; ?>

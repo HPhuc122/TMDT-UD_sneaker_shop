@@ -7,16 +7,28 @@ require_once("../includes/db.php");
 
 // db.php đã xử lý session_name + session_start rồi
 
-// ==================== Nhận dữ liệu từ form checkout ====================
-// Lấy từ session (từ checkout.php)
-if (!isset($_SESSION['vnpay_info'])) {
-    die("Lỗi: Thông tin thanh toán không hợp lệ");
+if (!isLoggedIn()) {
+    die("Lỗi: Phiên đăng nhập không hợp lệ");
 }
 
-$vnpay_info = $_SESSION['vnpay_info'];
-$vnp_TxnRef = time();
-$vnp_OrderInfo = "Thanh toan don hang";
-$vnp_Amount = (int)$vnpay_info['total_amount'];
+$user_id = (int)$_SESSION['user_id'];
+$order_id = (int)($_GET['order_id'] ?? 0);
+if ($order_id <= 0) {
+    die("Lỗi: Thiếu mã đơn hàng");
+}
+
+$order = $conn->query("SELECT * FROM orders WHERE id=$order_id AND user_id=$user_id")->fetch_assoc();
+if (!$order) {
+    die("Lỗi: Không tìm thấy đơn hàng");
+}
+
+if ($order['payment_method'] !== 'online' || $order['status'] !== 'awaiting_payment') {
+    die("Lỗi: Trạng thái đơn hàng không hợp lệ để thanh toán VNPay");
+}
+
+$vnp_TxnRef = $order['order_code'];
+$vnp_OrderInfo = "Thanh toan don hang " . $order['order_code'];
+$vnp_Amount = (int)$order['total_amount'];
 $vnp_IpAddr = $_SERVER['REMOTE_ADDR'];
 
 // Kiểm tra số tiền

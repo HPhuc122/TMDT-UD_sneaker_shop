@@ -124,7 +124,7 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                         </li>
                     <?php else: ?>
                         <li class="nav-item">
-                            <a class="nav-link d-flex align-items-center" href="/login.php">
+                            <a class="nav-link d-flex align-items-center" href="login.php">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Đăng nhập
                             </a>
                         </li>

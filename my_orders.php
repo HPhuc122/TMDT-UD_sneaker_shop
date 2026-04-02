@@ -35,7 +35,7 @@ if ($detail_id > 0) {
         <div class="card border-0 shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <strong>Đơn hàng: <?= htmlspecialchars($orderDetail['order_code']) ?></strong>
-                <?php list($label, $color) = $statusLabels[$orderDetail['status']]; ?>
+                <?php list($label, $color) = $statusLabels[$orderDetail['status']] ?? ['Không xác định', 'dark']; ?>
                 <span class="badge bg-<?= $color ?>"><?= $label ?></span>
             </div>
             <div class="card-body">
@@ -50,9 +50,21 @@ if ($detail_id > 0) {
                         <h6 class="fw-bold">Chi tiết đơn hàng</h6>
                         <p class="mb-1">Ngày đặt: <?= date('d/m/Y H:i', strtotime($orderDetail['created_at'])) ?></p>
                         <?php
-                        $pm = ['cash' => 'Tiền mặt (COD)', 'transfer' => 'Chuyển khoản', 'online' => 'Trực tuyến'];
+                        $pm = ['cash' => 'Tiền mặt (COD)', 'online' => 'Trực tuyến'];
                         ?>
-                        <p class="mb-0">Thanh toán: <?= $pm[$orderDetail['payment_method']] ?></p>
+                        <p class="mb-0">Thanh toán: <?= $pm[$orderDetail['payment_method']] ?? 'Khác' ?></p>
+                        <?php if ($orderDetail['status'] === 'awaiting_payment'): ?>
+                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                            <?php if ($orderDetail['payment_method'] === 'online'): ?>
+                            <a href="checkout.php?repay=<?= (int)$orderDetail['id'] ?>&action=pay" class="btn btn-primary btn-sm">
+                                <i class="bi bi-credit-card me-2"></i>Thanh toán
+                            </a>
+                            <?php endif; ?>
+                            <a href="checkout.php?repay=<?= (int)$orderDetail['id'] ?>" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
+                            </a>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -112,19 +124,28 @@ if ($detail_id > 0) {
                         </thead>
                         <tbody>
                             <?php while ($ord = $orders->fetch_assoc()):
-                                list($label, $color) = $statusLabels[$ord['status']];
-                                $pm = ['cash' => 'COD', 'transfer' => 'CK', 'online' => 'Online'];
+                                list($label, $color) = $statusLabels[$ord['status']] ?? ['Không xác định', 'dark'];
+                                $pm = ['cash' => 'COD', 'online' => 'Online'];
                             ?>
                                 <tr>
                                     <td><strong><?= htmlspecialchars($ord['order_code']) ?></strong></td>
                                     <td><?= date('d/m/Y H:i', strtotime($ord['created_at'])) ?></td>
                                     <td class="text-end fw-bold" style="color:#ff6b35"><?= formatPrice($ord['total_amount']) ?></td>
-                                    <td><?= $pm[$ord['payment_method']] ?></td>
+                                    <td><?= $pm[$ord['payment_method']] ?? 'Khác' ?></td>
                                     <td><span class="badge bg-<?= $color ?>"><?= $label ?></span></td>
                                     <td class="text-center">
-                                        <a href="my_orders.php?id=<?= $ord['id'] ?>" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
+                                        <div class="d-inline-flex align-items-center" style="width:76px;justify-content:space-between;">
+                                            <a href="my_orders.php?id=<?= $ord['id'] ?>" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <?php if ($ord['status'] === 'awaiting_payment' && $ord['payment_method'] === 'online'): ?>
+                                                <a href="checkout.php?repay=<?= (int)$ord['id'] ?>&action=pay" class="btn btn-sm btn-primary">
+                                                    <i class="bi bi-credit-card"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <span style="display:inline-block;width:31px;"></span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>

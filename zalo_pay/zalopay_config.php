@@ -12,7 +12,7 @@ define('ZALOPAY_ENDPOINT', 'https://sb-openapi.zalopay.vn/v2/create');
 // ⚠️ THAY DÒNG NÀY bằng URL ngrok của bạn (xem hướng dẫn ngrok bên dưới)
 // Ví dụ: 'https://abc123.ngrok-free.app'
 // Không có dấu / ở cuối
-define('APP_URL', 'https://uninfusive-audry-reptilelike.ngrok-free.dev');
+define('APP_URL', 'https://rosana-cucurbitaceous-pei.ngrok-free.dev');
 
 // Đường dẫn tới thư mục zalo_pay trong project
 // Ví dụ nếu project ở localhost/sneaker_shop thì:

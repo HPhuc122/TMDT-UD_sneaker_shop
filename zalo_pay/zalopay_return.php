@@ -1,5 +1,5 @@
 <?php
-// zalopay_return.php — Trừ tồn kho khi thành công, giữ đơn awaiting_payment khi thất bại
+// zalopay_return.php — Chỉ trừ tồn kho khi thành công, giữ awaiting_payment khi thất bại
 require_once '../includes/db.php';
 require_once 'zalopay_config.php';
 
@@ -18,43 +18,56 @@ if ($app_trans_id) {
 $success = ($status === 1) && ($order !== null);
 
 if ($success && $order) {
-    // ✅ THÀNH CÔNG
-    $_SESSION['cart'] = [];
+  // ✅ THÀNH CÔNG
+  $conn->begin_transaction();
+  try {
+    $oid = (int)$order['id'];
+    $locked = $conn->query("SELECT * FROM orders WHERE id=$oid FOR UPDATE")->fetch_assoc();
 
-    // Trừ tồn kho LẦN ĐẦU (ZaloPay không trừ lúc tạo đơn)
-    // Dùng payment_status != 'paid' để tránh trừ 2 lần nếu callback về trước
-    if ($order['payment_status'] !== 'paid') {
-        $items = $conn->query(
-            "SELECT product_id, quantity FROM order_details WHERE order_id={$order['id']}"
-        );
-        while ($item = $items->fetch_assoc()) {
-            $conn->query(
-                "UPDATE products
-                 SET stock_quantity = stock_quantity - {$item['quantity']}
-                 WHERE id = {$item['product_id']} AND stock_quantity >= {$item['quantity']}"
-            );
+    if ($locked && $locked['status'] === 'confirmed') {
+      // Đã xử lý thành công trước đó
+    } else {
+      $items = $conn->query(
+        "SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$oid"
+      );
+      while ($item = $items->fetch_assoc()) {
+        $pid = (int)$item['product_id'];
+        $size = (int)$item['size_id'];
+        $color = (int)$item['color_id'];
+        $qty = (int)$item['quantity'];
+
+        $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
+        if (!$stock || (int)$stock['stock_quantity'] < $qty) {
+          throw new Exception('Sản phẩm không đủ tồn kho để hoàn tất thanh toán.');
         }
-        $conn->query(
-            "UPDATE orders
-             SET status         = 'confirmed',
-                 payment_status = 'paid'
-             WHERE id = {$order['id']} AND payment_status != 'paid'"
-        );
+
+        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
+        if ($conn->affected_rows !== 1) {
+          throw new Exception('Không thể cập nhật tồn kho do cạnh tranh dữ liệu.');
+        }
+      }
+
+      $conn->query("UPDATE orders SET status='confirmed' WHERE id=$oid AND status='awaiting_payment'");
+      if ($conn->affected_rows !== 1) {
+        throw new Exception('Đơn hàng đã được xử lý bởi giao dịch khác.');
+      }
     }
 
-    // Reload dữ liệu mới nhất
-    $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
+    $conn->commit();
+    $_SESSION['cart'] = [];
+    $order = $conn->query("SELECT * FROM orders WHERE id=$oid")->fetch_assoc();
+  } catch (Exception $e) {
+    $conn->rollback();
+    $success = false;
+  }
 
 } elseif (!$success && $order) {
-    // ❌ THẤT BẠI / HỦY / BACK
-    // KHÔNG xóa đơn, KHÔNG hoàn tồn kho (chưa trừ lần nào)
-    // Chuyển sang trạng thái "Chờ thanh toán" để user có thể thanh toán lại
-    if ($order['payment_status'] !== 'paid') {
-        $conn->query(
-            "UPDATE orders SET status='awaiting_payment' WHERE id={$order['id']}"
-        );
-    }
-    $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
+  // ❌ THẤT BẠI / HỦY / BACK
+  // KHÔNG xóa đơn, KHÔNG trừ tồn kho, giữ trạng thái chờ thanh toán
+  if ($order['status'] !== 'confirmed') {
+    $conn->query("UPDATE orders SET status='awaiting_payment' WHERE id={$order['id']}");
+  }
+  $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
 }
 
 $pageTitle = $success ? 'Thanh toán thành công' : 'Thanh toán thất bại';
@@ -123,7 +136,7 @@ require_once '../includes/header.php';
         <a href="checkout.php?repay=<?= $order['id'] ?>" class="btn btn-outline-secondary">
           <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
         </a>
-        <a href="zalo_pay/zalopay_create.php?order_id=<?= $order['id'] ?>" class="btn btn-primary" style="background:#0068ff;border-color:#0068ff">
+        <a href="zalopay_create.php?order_id=<?= $order['id'] ?>" class="btn btn-primary" style="background:#0068ff;border-color:#0068ff">
           <i class="bi bi-phone me-2"></i>Thanh toán lại qua ZaloPay
         </a>
       </div>

@@ -10,15 +10,24 @@ $user    = $conn->query("SELECT * FROM users WHERE id=$user_id")->fetch_assoc();
 // REPAY FLOW — Đổi phương thức / thanh toán lại đơn awaiting_payment
 // ══════════════════════════════════════════════════════════════════
 $repay_order = null;
+$repay_action = sanitize($conn, $_GET['action'] ?? 'change');
 if (isset($_GET['repay'])) {
     $repay_id    = (int)$_GET['repay'];
     $repay_order = $conn->query(
         "SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id AND status='awaiting_payment'"
     )->fetch_assoc();
     if (!$repay_order) redirect('my_orders.php');
+
+    if ($repay_action === 'pay') {
+        if ($repay_order['payment_method'] === 'online') {
+            redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
+        }
+
+        $repay_action = 'change';
+    }
 }
 
-// POST: xử lý repay (đổi phương thức hoặc thanh toán lại ZaloPay)
+// POST: xử lý repay (đổi phương thức hoặc thanh toán lại online)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
     $repay_id  = (int)$_POST['repay_order_id'];
     $repay_ord = $conn->query(
@@ -27,22 +36,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
     if (!$repay_ord) redirect('my_orders.php');
 
     $payment    = sanitize($conn, $_POST['payment_method'] ?? 'cash');
-    $online_sub = sanitize($conn, $_POST['online_sub'] ?? 'zalopay');
+    $online_sub = sanitize($conn, $_POST['online_sub'] ?? 'vnpay');
 
-    if ($payment === 'online' && $online_sub === 'zalopay') {
-        // Thanh toán lại qua ZaloPay → update payment_method, chuyển sang zalopay_create
+    if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
+        // Thanh toán lại online -> giữ đơn awaiting_payment và chuyển sang cổng tương ứng
         $conn->query("UPDATE orders SET payment_method='online' WHERE id=$repay_id");
-        redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
+        if ($online_sub === 'zalopay') {
+            redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
+        }
+        redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
     } else {
-        // Đổi sang COD/Transfer → trừ tồn kho lúc này, status='pending'
-        $items = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$repay_id");
+        // Đổi sang COD → trừ tồn kho lúc này, status='pending'
+        $items = $conn->query("SELECT product_id, quantity, size_id, color_id FROM order_details WHERE order_id=$repay_id");
         while ($item = $items->fetch_assoc()) {
             $pid = (int)$item['product_id'];
             $qty = (int)$item['quantity'];
-            $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
+            $size = (int)$item['size_id'];
+            $color = (int)$item['color_id'];
+            if ($size > 0 && $color > 0) {
+                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
+            }
         }
         $pm_safe = $conn->real_escape_string($payment);
-        $conn->query("UPDATE orders SET payment_method='$pm_safe', status='pending', payment_status='pending' WHERE id=$repay_id");
+        $conn->query("UPDATE orders SET payment_method='$pm_safe', status='pending' WHERE id=$repay_id");
         $_SESSION['cart'] = [];
         redirect('checkout.php?success=' . $repay_id);
     }
@@ -72,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
     $district   = $use_saved ? $user['district']  : sanitize($conn, $_POST['district']         ?? '');
     $city       = $use_saved ? $user['city']      : sanitize($conn, $_POST['city']             ?? '');
     $payment    = sanitize($conn, $_POST['payment_method'] ?? 'cash');
-    $online_sub = sanitize($conn, $_POST['online_sub']     ?? 'zalopay');
+    $online_sub = sanitize($conn, $_POST['online_sub']     ?? 'vnpay');
     $notes      = sanitize($conn, $_POST['notes']          ?? '');
 
     if (!$receiver || !$phone || !$address || !$ward || !$district || !$city) {
@@ -80,20 +96,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        // Nếu thanh toán trực tuyến (VNPay), lưu thông tin vào session rồi chuyển hướng (không tạo đơn chưa)
-        if ($payment === 'online') {
-            $_SESSION['cart_backup'] = $cart;
-            $_SESSION['vnpay_info'] = [
-                'receiver_name'      => $receiver,
-                'receiver_phone'     => $phone,
-                'shipping_address'   => $address,
-                'ward'               => $ward,
-                'district'           => $district,
-                'city'               => $city,
-                'total_amount'       => $total,
-                'notes'              => $notes
-            ];
-            redirect('vnpay/vnpay_create_payment.php');
+        // Thanh toán online: tạo đơn trước ở trạng thái awaiting_payment, chưa trừ kho
+        if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
+            $conn->begin_transaction();
+            try {
+                $order_code = generateCode('DH');
+            $status = 'awaiting_payment';
+
+            $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $status, $notes);
+                $stmt->execute();
+                $order_id = $conn->insert_id;
+
+                $detailStmt = $conn->prepare("INSERT INTO order_details (order_id,product_id,quantity,unit_price,size_id,color_id) VALUES (?,?,?,?,?,?)");
+                foreach ($cart as $item) {
+                    $pid   = (int)($item['product_id'] ?? 0);
+                    $size  = (int)($item['size_id'] ?? 0);
+                    $color = (int)($item['color_id'] ?? 0);
+                    $qty   = (int)($item['qty'] ?? 0);
+                    $price = (float)($item['price'] ?? 0);
+                    if ($pid <= 0 || $size <= 0 || $color <= 0 || $qty <= 0) {
+                        throw new Exception('Dữ liệu giỏ hàng không hợp lệ.');
+                    }
+                    $detailStmt->bind_param('iiidii', $order_id, $pid, $qty, $price, $size, $color);
+                    $detailStmt->execute();
+                }
+
+                $conn->commit();
+                $_SESSION['cart'] = [];
+                if ($online_sub === 'zalopay') {
+                    redirect('zalo_pay/zalopay_create.php?order_id=' . $order_id);
+                }
+                redirect('vnpay/vnpay_create_payment.php?order_id=' . $order_id);
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = $e->getMessage();
+            }
         } else {
             // Thanh toán COD hoặc chuyển khoản → tạo đơn hàng ngay
             $order_code = generateCode('DH');
@@ -103,10 +141,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
                 $order_id = $conn->insert_id;
                 foreach ($cart as $item) {
                     $pid   = (int)$item['product_id'];
+                    $size  = (int)($item['size_id'] ?? 0);
+                    $color = (int)($item['color_id'] ?? 0);
                     $qty   = (int)$item['qty'];
                     $price = (float)$item['price'];
-                    $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
-                    $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
+                    $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price,size_id,color_id) VALUES ($order_id,$pid,$qty,$price,$size,$color)");
+                    if ($size > 0 && $color > 0) {
+                        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
+                    }
                 }
                 $_SESSION['cart'] = [];
                 redirect('checkout.php?success=' . $order_id);
@@ -161,14 +203,8 @@ require_once 'includes/header.php';
                     <div class="small text-muted">
                         <p class="mb-1"><i class="bi bi-person me-1"></i><?= htmlspecialchars($ord['receiver_name']) ?> · <?= htmlspecialchars($ord['receiver_phone']) ?></p>
                         <p class="mb-1"><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($ord['shipping_address'].', '.$ord['ward'].', '.$ord['district'].', '.$ord['city']) ?></p>
-                        <?php $pm=['cash'=>'Tiền mặt (COD)','transfer'=>'Chuyển khoản','online'=>'Trực tuyến']; ?>
+                        <?php $pm=['cash'=>'Tiền mặt (COD)','online'=>'Trực tuyến']; ?>
                         <p class="mb-0"><i class="bi bi-credit-card me-1"></i><?= $pm[$ord['payment_method']] ?></p>
-                        <?php if ($ord['payment_method']==='transfer'): ?>
-                        <div class="alert alert-info mt-2 py-2 small mb-0">
-                            <strong>Chuyển khoản:</strong> Vietcombank · STK: 1234567890 · Chủ TK: SNEAKER SHOP<br>
-                            Nội dung: <strong><?= htmlspecialchars($ord['order_code']) ?></strong>
-                        </div>
-                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -179,7 +215,7 @@ require_once 'includes/header.php';
         </div>
     </div>
 
-    <?php elseif ($repay_order): ?>
+    <?php elseif ($repay_order && $repay_action === 'change'): ?>
     <!-- 🔄 REPAY FORM — Đổi phương thức / Thanh toán lại -->
     <?php if ($error): ?>
     <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i><?= $error ?></div>
@@ -208,22 +244,20 @@ require_once 'includes/header.php';
                             <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
                             <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
                         </div>
-                        <div class="form-check mb-3 p-3 border rounded">
-                            <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
-                            <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
-                        </div>
-                        <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
-                            Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
-                        </div>
                         <div class="form-check p-3 border rounded">
                             <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
                             <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
                         </div>
                         <div id="onlineSubOptions" style="display:none" class="mt-3 ps-2">
-                            <input type="hidden" name="online_sub" value="zalopay">
-                            <div class="d-flex align-items-center gap-2 p-2 border rounded" style="background:#f0f6ff;border-color:#0068ff!important">
-                                <svg width="32" height="32" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#0068FF"/><text x="18" y="15" text-anchor="middle" font-size="6.5" font-weight="bold" fill="white" font-family="Arial">Zalo</text><text x="18" y="26" text-anchor="middle" font-size="6.5" font-weight="bold" fill="white" font-family="Arial">Pay</text></svg>
-                                <span class="fw-semibold" style="color:#0068ff">ZaloPay</span>
+                            <div class="d-flex flex-column gap-2">
+                                <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#f0f6ff;border-color:#0068ff!important">
+                                    <input class="form-check-input m-0" type="radio" name="online_sub" value="vnpay" checked>
+                                    <span class="fw-semibold" style="color:#0068ff">VNPay</span>
+                                </label>
+                                <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#e8fbff;border-color:#00a1e4!important">
+                                    <input class="form-check-input m-0" type="radio" name="online_sub" value="zalopay">
+                                    <span class="fw-semibold" style="color:#00a1e4">ZaloPay</span>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -259,6 +293,30 @@ require_once 'includes/header.php';
             </div>
         </div>
     </form>
+
+    <?php elseif ($repay_order && $repay_action === 'pay'): ?>
+    <?php
+    // Nếu đây là action pay và chưa redirect được thì mở thẳng form gọn để người dùng bấm xác nhận
+    $pay_label = $repay_order['payment_method'] === 'online' ? 'Thanh toán ngay bằng VNPay' : 'Thanh toán đơn hàng';
+    ?>
+    <div class="card border-0 shadow-sm mx-auto" style="max-width:720px">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-credit-card-2-front" style="font-size:4rem;color:#ff6b35"></i>
+            <h4 class="fw-bold mt-3"><?= $pay_label ?></h4>
+            <p class="text-muted mb-4">Nhấn nút bên dưới để tiếp tục thanh toán đơn <?= htmlspecialchars($repay_order['order_code']) ?>.</p>
+            <div class="d-flex gap-2 justify-content-center flex-wrap">
+                <a href="vnpay/vnpay_create_payment.php?order_id=<?= (int)$repay_order['id'] ?>" class="btn btn-primary">
+                    <i class="bi bi-bag-check me-2"></i>Thanh toán
+                </a>
+                <a href="checkout.php?repay=<?= (int)$repay_order['id'] ?>" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
+                </a>
+                <a href="my_orders.php?id=<?= (int)$repay_order['id'] ?>" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-2"></i>Quay lại
+                </a>
+            </div>
+        </div>
+    </div>
 
     <?php else: ?>
     <!-- NORMAL CHECKOUT FORM -->
@@ -320,7 +378,19 @@ require_once 'includes/header.php';
                        
                         <div class="form-check p-3 border rounded">
                             <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
-                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến (VNPay)</label>
+                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
+                        </div>
+                        <div id="onlineSubOptions" style="display:none" class="mt-3 ps-2">
+                            <div class="d-flex flex-column gap-2">
+                                <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#f0f6ff;border-color:#0068ff!important">
+                                    <input class="form-check-input m-0" type="radio" name="online_sub" value="vnpay" checked>
+                                    <span class="fw-semibold" style="color:#0068ff">VNPay</span>
+                                </label>
+                                <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#e8fbff;border-color:#00a1e4!important">
+                                    <input class="form-check-input m-0" type="radio" name="online_sub" value="zalopay">
+                                    <span class="fw-semibold" style="color:#00a1e4">ZaloPay</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -369,7 +439,6 @@ function toggleAddress(cb) {
     document.getElementById('newAddress').style.display   = cb.checked ? 'none'  : 'block';
 }
 function showPayment(m) {
-    document.getElementById('transferInfo').style.display    = m === 'transfer' ? 'block' : 'none';
     document.getElementById('onlineSubOptions').style.display = m === 'online'   ? 'block' : 'none';
 }
 document.addEventListener('DOMContentLoaded', function() {

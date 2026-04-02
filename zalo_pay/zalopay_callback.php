@@ -23,27 +23,41 @@ try {
             "SELECT * FROM orders WHERE app_trans_id='$app_trans_id' LIMIT 1"
         )->fetch_assoc();
 
-        if ($order && $order['payment_status'] !== 'paid') {
-            // Trừ tồn kho (callback về trước return URL)
-            $items = $conn->query(
-                "SELECT product_id, quantity FROM order_details WHERE order_id={$order['id']}"
-            );
-            while ($item = $items->fetch_assoc()) {
-                $conn->query(
-                    "UPDATE products
-                     SET stock_quantity = stock_quantity - {$item['quantity']}
-                     WHERE id = {$item['product_id']} AND stock_quantity >= {$item['quantity']}"
-                );
-            }
+        if ($order) {
+            $conn->begin_transaction();
+            try {
+                $oid = (int)$order['id'];
+                $locked = $conn->query("SELECT * FROM orders WHERE id=$oid FOR UPDATE")->fetch_assoc();
 
-            // Cập nhật đơn hàng
-            $conn->query(
-                "UPDATE orders
-                 SET payment_status = 'paid',
-                     zp_trans_id    = '$zp_trans_id',
-                     status         = 'confirmed'
-                 WHERE id = {$order['id']} AND payment_status != 'paid'"
-            );
+                if ($locked && $locked['status'] !== 'confirmed') {
+                    $items = $conn->query(
+                        "SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$oid"
+                    );
+                    while ($item = $items->fetch_assoc()) {
+                        $pid = (int)$item['product_id'];
+                        $size = (int)$item['size_id'];
+                        $color = (int)$item['color_id'];
+                        $qty = (int)$item['quantity'];
+
+                        $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
+                        if (!$stock || (int)$stock['stock_quantity'] < $qty) {
+                            throw new Exception('Insufficient stock');
+                        }
+
+                        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
+                        if ($conn->affected_rows !== 1) {
+                            throw new Exception('Stock update race condition');
+                        }
+                    }
+
+                    $conn->query("UPDATE orders SET zp_trans_id='$zp_trans_id', status='confirmed' WHERE id=$oid AND status='awaiting_payment'");
+                }
+
+                $conn->commit();
+            } catch (Exception $e) {
+                $conn->rollback();
+                throw $e;
+            }
         }
 
         $result = ['return_code' => 1, 'return_message' => 'success'];

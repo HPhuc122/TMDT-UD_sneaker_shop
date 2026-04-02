@@ -53,9 +53,9 @@ $payload = [
     'mac'          => $mac,
 ];
 
-// Lưu app_trans_id vào DB
+// Lưu app_trans_id vào DB, giữ đơn ở trạng thái chờ thanh toán
 $ats = $conn->real_escape_string($app_trans_id);
-$conn->query("UPDATE orders SET app_trans_id='$ats', payment_status='pending' WHERE id=$order_id");
+$conn->query("UPDATE orders SET app_trans_id='$ats', status='awaiting_payment' WHERE id=$order_id");
 
 // Gọi API ZaloPay
 $ch = curl_init(ZALOPAY_ENDPOINT);

@@ -9,7 +9,7 @@ $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $id        = (int)$_POST['order_id'];
     $newStatus = sanitize($conn, $_POST['status']);
-    $allowed   = ['pending', 'confirmed', 'delivered', 'cancelled'];
+    $allowed   = ['awaiting_payment', 'pending', 'confirmed', 'delivered', 'cancelled'];
 
     if (in_array($newStatus, $allowed)) {
         $cur       = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                 $qty = (int)$d['quantity'];
                 $color_id = (int)$_POST['color_id'];
                 $size_id  = (int)$_POST['size_id'];
-                $conn->query("UPDATE products_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
+                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
             }
         } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
             // Bỏ huỷ đơn → trừ lại tồn kho
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                 $qty = (int)$d['quantity'];
                 $color_id = (int)$_POST['color_id'];
                 $size_id  = (int)$_POST['size_id'];
-                $conn->query("UPDATE products_varieties SET stock_quantity = GREATEST(0, stock_quantity - $qty) WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
+                $conn->query("UPDATE product_varieties SET stock_quantity = GREATEST(0, stock_quantity - $qty) WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
             }
             $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
         } else {
@@ -43,8 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     }
 }
 
-$statusLabels = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
-$statusColors = ['pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabels = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
+$statusColors = ['awaiting_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
 
 // Filters
 $filter_status = isset($_GET['status'])    ? sanitize($conn, $_GET['status']) : '';
@@ -87,7 +87,7 @@ if ($detail_id) {
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white fw-bold border-0 d-flex justify-content-between">
             <span>Đơn hàng: <?= htmlspecialchars($orderDetail['order_code']) ?></span>
-            <span class="badge bg-<?= $statusColors[$orderDetail['status']] ?>"><?= $statusLabels[$orderDetail['status']] ?></span>
+            <span class="badge bg-<?= $statusColors[$orderDetail['status']] ?? 'dark' ?>"><?= $statusLabels[$orderDetail['status']] ?? 'Không xác định' ?></span>
         </div>
         <div class="card-body">
             <div class="row g-4 mb-4">
@@ -107,7 +107,7 @@ if ($detail_id) {
                     <h6 class="fw-bold text-muted">ĐƠN HÀNG</h6>
                     <p class="mb-1">Ngày: <?= date('d/m/Y H:i', strtotime($orderDetail['created_at'])) ?></p>
                     <?php
-                    $pm = ['cash' => 'Tiền mặt (COD)', 'transfer' => 'Chuyển khoản', 'online' => 'Trực tuyến'];
+                    $pm = ['cash' => 'Tiền mặt (COD)', 'online' => 'Trực tuyến'];
                     ?>
                     <p class="mb-1">TT: <?= $pm[$orderDetail['payment_method']] ?></p>
                     <?php if ($orderDetail['notes']): ?>
@@ -221,7 +221,7 @@ if ($detail_id) {
                 </thead>
                 <tbody>
                     <?php
-                    $pm_short = ['cash' => 'COD', 'transfer' => 'CK', 'online' => 'Online'];
+                    $pm_short = ['cash' => 'COD', 'online' => 'Online'];
                     if ($orders->num_rows === 0): ?>
                         <tr>
                             <td colspan="8" class="text-center text-muted py-4">Không tìm thấy đơn hàng nào.</td>
@@ -236,7 +236,7 @@ if ($detail_id) {
                             <td class="text-end"><?= formatPrice($o['total_amount']) ?></td>
                             <td><span class="badge bg-light text-dark border"><?= $pm_short[$o['payment_method']] ?></span></td>
                             <td class="text-center">
-                                <span class="badge bg-<?= $statusColors[$o['status']] ?>"><?= $statusLabels[$o['status']] ?></span>
+                                <span class="badge bg-<?= $statusColors[$o['status']] ?? 'dark' ?>"><?= $statusLabels[$o['status']] ?? 'Không xác định' ?></span>
                             </td>
                             <td class="small text-muted"><?= date('d/m/Y H:i', strtotime($o['created_at'])) ?></td>
                             <td class="text-center">

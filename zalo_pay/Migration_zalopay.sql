@@ -4,7 +4,7 @@
 -- =====================================================
 
 ALTER TABLE `orders`
-  ADD COLUMN `payment_status` ENUM('pending','paid','failed') DEFAULT NULL
+  ADD COLUMN `payment_status` ENUM('pending','paid') DEFAULT 'pending'
       COMMENT 'Trạng thái thanh toán ZaloPay' AFTER `status`,
   ADD COLUMN `app_trans_id` VARCHAR(100) DEFAULT NULL
       COMMENT 'Mã giao dịch gửi lên ZaloPay (để đối chiếu callback)' AFTER `payment_status`,
@@ -13,7 +13,7 @@ ALTER TABLE `orders`
 
 ALTER TABLE `orders`
   MODIFY COLUMN `status`
-    ENUM('awaiting_payment','pending','confirmed','delivered','cancelled')
+    ENUM('pending_payment','pending','paid','confirmed','delivered','cancelled')
     DEFAULT 'pending';
 
 -- Index để tìm nhanh theo app_trans_id trong callback
