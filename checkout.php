@@ -80,47 +80,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        $order_code = generateCode('DH');
-
-        // ZaloPay: tạo đơn với status='awaiting_payment', KHÔNG trừ tồn kho
-        // COD/Transfer: tạo đơn với status='pending', trừ tồn kho ngay
-        $is_zalopay   = ($payment === 'online' && $online_sub === 'zalopay');
-        $init_status  = $is_zalopay ? 'awaiting_payment' : 'pending';
-
-        $stmt = $conn->prepare(
-            "INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes,status)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
-        );
-        $stmt->bind_param('sisssssssdss',
-            $order_code, $user_id, $receiver, $phone,
-            $address, $ward, $district, $city,
-            $payment, $total, $notes, $init_status
-        );
-
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
-            foreach ($cart as $item) {
-                $pid   = (int)$item['product_id'];
-                $qty   = (int)$item['qty'];
-                $price = (float)$item['price'];
-                $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
-
-                // Chỉ trừ tồn kho nếu KHÔNG phải ZaloPay
-                if (!$is_zalopay) {
+        // Nếu thanh toán trực tuyến (VNPay), lưu thông tin vào session rồi chuyển hướng (không tạo đơn chưa)
+        if ($payment === 'online') {
+            $_SESSION['cart_backup'] = $cart;
+            $_SESSION['vnpay_info'] = [
+                'receiver_name'      => $receiver,
+                'receiver_phone'     => $phone,
+                'shipping_address'   => $address,
+                'ward'               => $ward,
+                'district'           => $district,
+                'city'               => $city,
+                'total_amount'       => $total,
+                'notes'              => $notes
+            ];
+            redirect('vnpay/vnpay_create_payment.php');
+        } else {
+            // Thanh toán COD hoặc chuyển khoản → tạo đơn hàng ngay
+            $order_code = generateCode('DH');
+            $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+            if ($stmt->execute()) {
+                $order_id = $conn->insert_id;
+                foreach ($cart as $item) {
+                    $pid   = (int)$item['product_id'];
+                    $qty   = (int)$item['qty'];
+                    $price = (float)$item['price'];
+                    $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
                     $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
                 }
+                $_SESSION['cart'] = [];
+                redirect('checkout.php?success=' . $order_id);
+            } else {
+                $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
             }
-
-            if ($is_zalopay) {
-                // Giữ lại cart, chuyển sang trang thanh toán ZaloPay
-                redirect('zalo_pay/zalopay_create.php?order_id=' . $order_id);
-            }
-
-            // COD / Transfer
-            $_SESSION['cart'] = [];
-            redirect('checkout.php?success=' . $order_id);
-        } else {
-            $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
         }
     }
 }
@@ -325,45 +317,10 @@ require_once 'includes/header.php';
                             <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
                             <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
                         </div>
-                        <div class="form-check mb-3 p-3 border rounded">
-                            <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
-                            <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
-                        </div>
-                        <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
-                            Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
-                        </div>
-                        <div class="form-check p-3 border rounded" id="onlineBlock">
+                       
+                        <div class="form-check p-3 border rounded">
                             <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
-                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
-                        </div>
-                        <div id="onlineSubOptions" style="display:none" class="mt-3">
-                            <p class="text-muted small mb-2 ps-1">Chọn ví / cổng thanh toán:</p>
-                            <div class="d-flex flex-column gap-2">
-                                <label class="online-opt disabled-opt w-100" title="Sắp ra mắt">
-                                    <input type="radio" name="online_sub" value="momo" disabled style="display:none">
-                                    <div class="opt-row" style="opacity:.4;cursor:not-allowed">
-                                        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#A50064"/><text x="18" y="24" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial">MoMo</text></svg>
-                                        <span class="opt-name">MoMo</span>
-                                        <span class="badge bg-secondary ms-auto" style="font-size:.65rem">Sắp ra mắt</span>
-                                    </div>
-                                </label>
-                                <label class="online-opt disabled-opt w-100" title="Sắp ra mắt">
-                                    <input type="radio" name="online_sub" value="vnpay" disabled style="display:none">
-                                    <div class="opt-row" style="opacity:.4;cursor:not-allowed">
-                                        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#005BAA"/><text x="18" y="15" text-anchor="middle" font-size="7" font-weight="bold" fill="white" font-family="Arial">VN</text><text x="18" y="26" text-anchor="middle" font-size="7" font-weight="bold" fill="#E31B23" font-family="Arial">PAY</text></svg>
-                                        <span class="opt-name">VNPay</span>
-                                        <span class="badge bg-secondary ms-auto" style="font-size:.65rem">Sắp ra mắt</span>
-                                    </div>
-                                </label>
-                                <label class="online-opt w-100 selected" id="zalopayOpt">
-                                    <input type="radio" name="online_sub" value="zalopay" id="zalopayRadio" checked style="display:none">
-                                    <div class="opt-row">
-                                        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#0068FF"/><text x="18" y="15" text-anchor="middle" font-size="6.5" font-weight="bold" fill="white" font-family="Arial">Zalo</text><text x="18" y="26" text-anchor="middle" font-size="6.5" font-weight="bold" fill="white" font-family="Arial">Pay</text></svg>
-                                        <span class="opt-name" style="color:#0068ff;font-weight:600">ZaloPay</span>
-                                        <span class="badge ms-auto" style="background:#0068ff;font-size:.65rem">Khả dụng</span>
-                                    </div>
-                                </label>
-                            </div>
+                            <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến (VNPay)</label>
                         </div>
                     </div>
                 </div>

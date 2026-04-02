@@ -12,26 +12,19 @@ $total_revenue     = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FRO
 $total_users       = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
 // Low stock
-$low_stock = $conn->query("SELECT * FROM products WHERE stock_quantity <= 5 AND status='active' ORDER BY stock_quantity ASC LIMIT 5");
+$low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
+                            FROM products p JOIN product_varieties pv ON p.id = pv.product_id
+                            WHERE p.status = 'active'
+                            GROUP BY p.id
+                            HAVING total_stock <= 5
+                            ORDER BY total_stock ASC
+                            LIMIT 5;");
 
 // Recent orders
 $recent_orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC LIMIT 8");
 
-// ✅ Đã thêm awaiting_payment vào cả 2 mảng
-$statusColor = [
-    'awaiting_payment' => 'secondary',
-    'pending'          => 'warning',
-    'confirmed'        => 'info',
-    'delivered'        => 'success',
-    'cancelled'        => 'danger',
-];
-$statusLabel = [
-    'awaiting_payment' => 'Chờ thanh toán',
-    'pending'          => 'Chờ xử lý',
-    'confirmed'        => 'Đã xác nhận',
-    'delivered'        => 'Đã giao',
-    'cancelled'        => 'Đã huỷ',
-];
+$statusColor = ['pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
 ?>
 
 <div class="row g-4 mb-4">
@@ -81,8 +74,8 @@ $statusLabel = [
             <div class="card-body d-flex align-items-center gap-3">
                 <i class="bi bi-currency-dollar fs-2 opacity-75"></i>
                 <div>
-                    <div class="fs-4 fw-bold"><?= number_format($total_revenue/1000000,1) ?>M</div>
-                    <div class="small opacity-75">Doanh thu (đã xác nhận)</div>
+                    <div class="fs-4 fw-bold"><?= number_format($total_revenue / 1000000, 1) ?>M</div>
+                    <div class="small opacity-75">Doanh thu (đã giao)</div>
                 </div>
             </div>
         </div>
@@ -100,21 +93,23 @@ $statusLabel = [
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
-                        <tr><th>Mã đơn</th><th>Khách hàng</th><th>Tổng tiền</th><th>Trạng thái</th><th>Ngày</th></tr>
+                        <tr>
+                            <th>Mã đơn</th>
+                            <th>Khách hàng</th>
+                            <th>Tổng tiền</th>
+                            <th>Trạng thái</th>
+                            <th>Ngày</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        <?php while ($o = $recent_orders->fetch_assoc()):
-                            // ✅ Dùng ?? để tránh undefined nếu có status lạ
-                            $sc = $statusColor[$o['status']] ?? 'secondary';
-                            $sl = $statusLabel[$o['status']] ?? $o['status'];
-                        ?>
-                        <tr>
-                            <td><a href="orders.php?id=<?= $o['id'] ?>" class="fw-semibold text-decoration-none"><?= htmlspecialchars($o['order_code']) ?></a></td>
-                            <td><?= htmlspecialchars($o['full_name']) ?></td>
-                            <td><?= formatPrice($o['total_amount']) ?></td>
-                            <td><span class="badge bg-<?= $sc ?>"><?= $sl ?></span></td>
-                            <td class="text-muted small"><?= date('d/m H:i', strtotime($o['created_at'])) ?></td>
-                        </tr>
+                        <?php while ($o = $recent_orders->fetch_assoc()): ?>
+                            <tr>
+                                <td><a href="orders.php?id=<?= $o['id'] ?>" class="fw-semibold text-decoration-none"><?= htmlspecialchars($o['order_code']) ?></a></td>
+                                <td><?= htmlspecialchars($o['full_name']) ?></td>
+                                <td><?= formatPrice($o['total_amount']) ?></td>
+                                <td><span class="badge bg-<?= $statusColor[$o['status']] ?>"><?= $statusLabel[$o['status']] ?></span></td>
+                                <td class="text-muted small"><?= date('d/m H:i', strtotime($o['created_at'])) ?></td>
+                            </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
@@ -130,13 +125,13 @@ $statusLabel = [
             </div>
             <div class="list-group list-group-flush">
                 <?php if ($low_stock->num_rows === 0): ?>
-                <div class="list-group-item text-muted">Không có sản phẩm sắp hết hàng</div>
+                    <div class="list-group-item text-muted">Không có sản phẩm sắp hết hàng</div>
                 <?php endif; ?>
                 <?php while ($p = $low_stock->fetch_assoc()): ?>
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <span class="small"><?= htmlspecialchars($p['name']) ?></span>
-                    <span class="badge bg-<?= $p['stock_quantity'] == 0 ? 'danger' : 'warning' ?>"><?= $p['stock_quantity'] ?> còn</span>
-                </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="small"><?= htmlspecialchars($p['name']) ?></span>
+                        <span class="badge bg-<?= $p['stock_quantity'] == 0 ? 'danger' : 'warning' ?>"><?= $p['stock_quantity'] ?> còn</span>
+                    </div>
                 <?php endwhile; ?>
                 <a href="inventory.php" class="list-group-item list-group-item-action text-center text-primary small">Xem báo cáo tồn kho →</a>
             </div>
