@@ -22,7 +22,7 @@ if (!$order) {
     die("Lỗi: Không tìm thấy đơn hàng");
 }
 
-if ($order['payment_method'] !== 'online' || $order['status'] !== 'awaiting_payment') {
+if ($order['payment_method'] !== 'online' || !isPendingPaymentOrderStatus($conn, $order['status'])) {
     die("Lỗi: Trạng thái đơn hàng không hợp lệ để thanh toán VNPay");
 }
 

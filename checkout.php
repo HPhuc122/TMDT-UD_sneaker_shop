@@ -5,6 +5,8 @@ if (!isLoggedIn()) redirect('login.php?redirect=checkout.php');
 
 $user_id = $_SESSION['user_id'];
 $user    = $conn->query("SELECT * FROM users WHERE id=$user_id")->fetch_assoc();
+$hasPaymentStatusCol = hasTableColumn($conn, 'orders', 'payment_status');
+$hasPaymentDeadlineCol = hasTableColumn($conn, 'orders', 'payment_deadline');
 
 // ══════════════════════════════════════════════════════════════════
 // REPAY FLOW — Đổi phương thức / thanh toán lại đơn awaiting_payment
@@ -13,9 +15,10 @@ $repay_order = null;
 $repay_action = sanitize($conn, $_GET['action'] ?? 'change');
 if (isset($_GET['repay'])) {
     $repay_id    = (int)$_GET['repay'];
-    $repay_order = $conn->query(
-        "SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id AND status='awaiting_payment'"
-    )->fetch_assoc();
+    $repay_order = $conn->query("SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id")->fetch_assoc();
+    if ($repay_order && !isPendingPaymentOrderStatus($conn, $repay_order['status'])) {
+        $repay_order = null;
+    }
     if (!$repay_order) redirect('my_orders.php');
 
     if ($repay_action === 'pay') {
@@ -30,9 +33,10 @@ if (isset($_GET['repay'])) {
 // POST: xử lý repay (đổi phương thức hoặc thanh toán lại online)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
     $repay_id  = (int)$_POST['repay_order_id'];
-    $repay_ord = $conn->query(
-        "SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id AND status='awaiting_payment'"
-    )->fetch_assoc();
+    $repay_ord = $conn->query("SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id")->fetch_assoc();
+    if ($repay_ord && !isPendingPaymentOrderStatus($conn, $repay_ord['status'])) {
+        $repay_ord = null;
+    }
     if (!$repay_ord) redirect('my_orders.php');
 
     $payment    = sanitize($conn, $_POST['payment_method'] ?? 'cash');
@@ -40,25 +44,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
 
     if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
         // Thanh toán lại online -> giữ đơn awaiting_payment và chuyển sang cổng tương ứng
-        $conn->query("UPDATE orders SET payment_method='online' WHERE id=$repay_id");
+        $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
+        if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+        if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+        $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
         if ($online_sub === 'zalopay') {
             redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
         }
         redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
     } else {
-        // Đổi sang COD → trừ tồn kho lúc này, status='pending'
-        $items = $conn->query("SELECT product_id, quantity, size_id, color_id FROM order_details WHERE order_id=$repay_id");
-        while ($item = $items->fetch_assoc()) {
-            $pid = (int)$item['product_id'];
-            $qty = (int)$item['quantity'];
-            $size = (int)$item['size_id'];
-            $color = (int)$item['color_id'];
-            if ($size > 0 && $color > 0) {
-                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
-            }
-        }
+        // Đổi sang COD/chuyển khoản: tồn kho đã được giữ sẵn từ lúc tạo đơn online.
         $pm_safe = $conn->real_escape_string($payment);
-        $conn->query("UPDATE orders SET payment_method='$pm_safe', status='pending' WHERE id=$repay_id");
+        $setSql = "payment_method='$pm_safe', status='pending'";
+        if ($hasPaymentStatusCol) $setSql .= ", payment_status=NULL";
+        if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+        $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
         $_SESSION['cart'] = [];
         redirect('checkout.php?success=' . $repay_id);
     }
@@ -96,19 +96,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        // Thanh toán online: tạo đơn trước ở trạng thái awaiting_payment, chưa trừ kho
+        // Thanh toán online: tạo đơn ở trạng thái chờ thanh toán, trừ tồn kho ngay để giữ hàng 24h.
         if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
             $conn->begin_transaction();
             try {
                 $order_code = generateCode('DH');
-            $status = 'awaiting_payment';
+                $status = getOnlinePendingStatus($conn);
 
-            $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $status, $notes);
+                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $status, $notes);
                 $stmt->execute();
                 $order_id = $conn->insert_id;
 
+                $setSql = "status='" . $conn->real_escape_string($status) . "'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
+
                 $detailStmt = $conn->prepare("INSERT INTO order_details (order_id,product_id,quantity,unit_price,size_id,color_id) VALUES (?,?,?,?,?,?)");
+                $stockStmt = $conn->prepare("SELECT stock_quantity FROM product_varieties WHERE product_id=? AND size_id=? AND color_id=? FOR UPDATE");
+                $updateStockStmt = $conn->prepare("UPDATE product_varieties SET stock_quantity = stock_quantity - ? WHERE product_id=? AND size_id=? AND color_id=? AND stock_quantity >= ?");
                 foreach ($cart as $item) {
                     $pid   = (int)($item['product_id'] ?? 0);
                     $size  = (int)($item['size_id'] ?? 0);
@@ -118,6 +125,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
                     if ($pid <= 0 || $size <= 0 || $color <= 0 || $qty <= 0) {
                         throw new Exception('Dữ liệu giỏ hàng không hợp lệ.');
                     }
+
+                    $stockStmt->bind_param('iii', $pid, $size, $color);
+                    $stockStmt->execute();
+                    $stockRow = $stockStmt->get_result()->fetch_assoc();
+                    if (!$stockRow || (int)$stockRow['stock_quantity'] < $qty) {
+                        throw new Exception('Sản phẩm không đủ tồn kho để giữ đơn trong 24 giờ.');
+                    }
+
+                    $updateStockStmt->bind_param('iiiii', $qty, $pid, $size, $color, $qty);
+                    $updateStockStmt->execute();
+                    if ($updateStockStmt->affected_rows !== 1) {
+                        throw new Exception('Không thể giữ tồn kho do cạnh tranh dữ liệu.');
+                    }
+
                     $detailStmt->bind_param('iiidii', $order_id, $pid, $qty, $price, $size, $color);
                     $detailStmt->execute();
                 }

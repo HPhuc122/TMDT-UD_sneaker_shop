@@ -33,6 +33,8 @@ $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
 $payment_success = false;
 $ord = null;
 $error_msg = '';
+$hasPaymentStatusCol = hasTableColumn($conn, 'orders', 'payment_status');
+$hasPaymentDeadlineCol = hasTableColumn($conn, 'orders', 'payment_deadline');
 
 // Kiểm tra chữ ký
 if ($secureHash !== $vnp_SecureHash) {
@@ -59,61 +61,41 @@ if ($secureHash !== $vnp_SecureHash) {
 
             // Đơn đã xử lý thành công trước đó (idempotent)
             if ($ord['status'] === 'confirmed') {
+                $setSql = "status='confirmed'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                $conn->query("UPDATE orders SET $setSql WHERE id=" . (int)$ord['id']);
                 $payment_success = true;
                 $conn->commit();
             } elseif ($isSuccess) {
-                if ($ord['status'] !== 'awaiting_payment') {
+                if (!isPendingPaymentOrderStatus($conn, $ord['status'])) {
                     throw new Exception('Trạng thái đơn hàng không hợp lệ để xác nhận VNPay.');
                 }
 
-                $details = $conn->query("SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=" . (int)$ord['id']);
-                while ($item = $details->fetch_assoc()) {
-                    $pid = (int)$item['product_id'];
-                    $size = (int)$item['size_id'];
-                    $color = (int)$item['color_id'];
-                    $qty = (int)$item['quantity'];
-
-                    if ($pid <= 0 || $size <= 0 || $color <= 0 || $qty <= 0) {
-                        throw new Exception('Dữ liệu chi tiết đơn hàng không hợp lệ.');
-                    }
-
-                    $stockStmt = $conn->prepare("SELECT stock_quantity FROM product_varieties WHERE product_id=? AND size_id=? AND color_id=? FOR UPDATE");
-                    $stockStmt->bind_param('iii', $pid, $size, $color);
-                    $stockStmt->execute();
-                    $stockRow = $stockStmt->get_result()->fetch_assoc();
-
-                    if (!$stockRow || (int)$stockRow['stock_quantity'] < $qty) {
-                        throw new Exception('Sản phẩm không đủ tồn kho để hoàn tất thanh toán.');
-                    }
-
-                    $updateStockStmt = $conn->prepare("UPDATE product_varieties SET stock_quantity = stock_quantity - ? WHERE product_id=? AND size_id=? AND color_id=? AND stock_quantity >= ?");
-                    $updateStockStmt->bind_param('iiiii', $qty, $pid, $size, $color, $qty);
-                    $updateStockStmt->execute();
-                    if ($updateStockStmt->affected_rows !== 1) {
-                        throw new Exception('Không thể cập nhật tồn kho do cạnh tranh dữ liệu.');
-                    }
-                }
-
-                $updateOrderStmt = $conn->prepare("UPDATE orders SET status='confirmed' WHERE id=? AND status='awaiting_payment'");
+                $updateOrderStmt = $conn->prepare("UPDATE orders SET status='confirmed' WHERE id=? AND status=?");
                 $orderId = (int)$ord['id'];
-                $updateOrderStmt->bind_param('i', $orderId);
+                $fromStatus = (string)$ord['status'];
+                $updateOrderStmt->bind_param('is', $orderId, $fromStatus);
                 $updateOrderStmt->execute();
 
                 if ($updateOrderStmt->affected_rows !== 1) {
                     throw new Exception('Đơn hàng đã được xử lý bởi giao dịch khác.');
                 }
 
+                $setSql = "status='confirmed'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+
                 $ord['status'] = 'confirmed';
                 $payment_success = true;
                 $conn->commit();
             } else {
-                // Thất bại/hủy/lỗi -> giữ nguyên awaiting_payment, không trừ kho
-                if ($ord['status'] !== 'pending') {
-                    $keepStmt = $conn->prepare("UPDATE orders SET status='awaiting_payment' WHERE id=? AND status='awaiting_payment'");
-                    $orderId = (int)$ord['id'];
-                    $keepStmt->bind_param('i', $orderId);
-                    $keepStmt->execute();
-                    $ord['status'] = 'awaiting_payment';
+                // Thất bại/hủy/lỗi -> giữ trạng thái chờ thanh toán, vẫn giữ tồn kho.
+                if (isPendingPaymentOrderStatus($conn, $ord['status'])) {
+                    $setSql = "status='" . $conn->real_escape_string($ord['status']) . "'";
+                    if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                    $conn->query("UPDATE orders SET $setSql WHERE id=" . (int)$ord['id']);
                 }
                 $conn->commit();
                 $error_msg = 'Thanh toán chưa thành công. Đơn hàng vẫn ở trạng thái chờ thanh toán.';
@@ -125,18 +107,11 @@ if ($secureHash !== $vnp_SecureHash) {
             $error_msg = $e->getMessage();
         }
 
-        if ($ord['status'] === 'confirmed' || $ord['status'] === 'delivered') {
-            $setSql = "status=status";
-            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
-            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
-            if ($hasZpTransIdCol && $vnpTransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnpTransactionNo) . "'";
-            $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
+        if ($ord && ($ord['status'] === 'confirmed' || $ord['status'] === 'delivered')) {
+            $payment_success = true;
+            $_SESSION['cart'] = [];
+            unset($_SESSION['pending_online_order_id']);
         }
-
-        $payment_success = true;
-        $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id")->fetch_assoc();
-        $_SESSION['cart'] = [];
-        unset($_SESSION['pending_online_order_id']);
     }
 }
 
@@ -223,7 +198,7 @@ if ($secureHash !== $vnp_SecureHash) {
                         }
                         ?>
                     </p>
-                    <p class="text-muted"><strong>Lưu ý:</strong> Đơn hàng vẫn ở trạng thái chờ thanh toán và chưa bị trừ tồn kho.</p>
+                    <p class="text-muted"><strong>Lưu ý:</strong> Đơn hàng vẫn ở trạng thái chờ thanh toán, tồn kho đã được giữ trong 24 giờ và sẽ tự động hoàn khi hết hạn.</p>
                     
                     <div class="mt-4 d-flex gap-2 justify-content-center flex-wrap">
                         <a href="../my_orders.php" class="btn btn-primary"><i class="bi bi-bag-check me-2"></i>Xem đơn hàng</a>
