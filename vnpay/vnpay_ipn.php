@@ -41,47 +41,64 @@ $hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_sta
 $hasZpTransIdCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'zp_trans_id'")->num_rows > 0);
 $hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
 
-if ($secureHash == $vnp_SecureHash) {
-    $vnp_TxnRef = isset($inputData['vnp_TxnRef']) ? (int)$inputData['vnp_TxnRef'] : 0;
-    $vnp_Amount = isset($inputData['vnp_Amount']) ? (int)$inputData['vnp_Amount'] : 0; // amount * 100
-    $vnp_ResponseCode = $inputData['vnp_ResponseCode'] ?? '';
-    $vnp_TransactionStatus = $inputData['vnp_TransactionStatus'] ?? '';
-    $vnp_TransactionNo = sanitize($conn, $inputData['vnp_TransactionNo'] ?? '');
+    $txnRefSafe = sanitize($conn, $vnp_TxnRef);
+    $order = $conn->query("SELECT * FROM orders WHERE order_code='$txnRefSafe' LIMIT 1")->fetch_assoc();
 
-    if ($vnp_TxnRef <= 0) {
+    if (!$order) {
         $RspCode = "01";
         $Message = "Order not found";
     } else {
-        $order = $conn->query("SELECT * FROM orders WHERE id=$vnp_TxnRef AND payment_method='online' LIMIT 1")->fetch_assoc();
-        if (!$order) {
-            $RspCode = "01";
-            $Message = "Order not found";
-        } elseif (((int)$order['total_amount'] * 100) !== $vnp_Amount) {
-            $RspCode = "04";
-            $Message = "Invalid amount";
-        } elseif ($order['status'] === 'confirmed' || $order['status'] === 'delivered') {
-            $setSql = "status=status";
-            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
-            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
-            if ($hasZpTransIdCol && $vnp_TransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnp_TransactionNo) . "'";
-            $conn->query("UPDATE orders SET $setSql WHERE id=$vnp_TxnRef");
-            $RspCode = "02";
-            $Message = "Order already confirmed";
-        } elseif ($vnp_ResponseCode == '00' && $vnp_TransactionStatus == '00') {
-            $setSql = "status='confirmed'";
-            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
-            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
-            if ($hasZpTransIdCol && $vnp_TransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnp_TransactionNo) . "'";
-            $conn->query("UPDATE orders SET $setSql WHERE id=$vnp_TxnRef");
+        $isSuccess = ($vnp_ResponseCode == '00' && $vnp_TransactionStatus == '00');
+        $conn->begin_transaction();
+        try {
+            $orderId = (int)$order['id'];
+            $orderRow = $conn->query("SELECT * FROM orders WHERE id=$orderId FOR UPDATE")->fetch_assoc();
 
-            $RspCode = "00";
-            $Message = "Success";
-        } else {
-            if ($hasPaymentStatusCol) {
-                $conn->query("UPDATE orders SET payment_status='failed' WHERE id=$vnp_TxnRef");
+            if ($orderRow['status'] === 'confirmed') {
+                $RspCode = "00";
+                $Message = "Success";
+                $conn->commit();
+            } elseif ($isSuccess) {
+                if ($orderRow['status'] !== 'awaiting_payment') {
+                    throw new Exception('Invalid order status for payment confirmation');
+                }
+
+                $details = $conn->query("SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$orderId");
+                while ($item = $details->fetch_assoc()) {
+                    $pid = (int)$item['product_id'];
+                    $size = (int)$item['size_id'];
+                    $color = (int)$item['color_id'];
+                    $qty = (int)$item['quantity'];
+
+                    $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
+                    if (!$stock || (int)$stock['stock_quantity'] < $qty) {
+                        throw new Exception('Insufficient stock');
+                    }
+
+                    $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
+                    if ($conn->affected_rows !== 1) {
+                        throw new Exception('Stock update race condition');
+                    }
+                }
+
+                $conn->query("UPDATE orders SET status='confirmed' WHERE id=$orderId AND status='awaiting_payment'");
+                if ($conn->affected_rows !== 1) {
+                    throw new Exception('Order already processed');
+                }
+                $RspCode = "00";
+                $Message = "Success";
+                $conn->commit();
+            } else {
+                // Thất bại/hủy/lỗi -> giữ awaiting_payment
+                $conn->query("UPDATE orders SET status='awaiting_payment' WHERE id=$orderId AND status='awaiting_payment'");
+                $RspCode = "00";
+                $Message = "Success";
+                $conn->commit();
             }
-            $RspCode = "00";
-            $Message = "Confirm Success";
+        } catch (Exception $e) {
+            $conn->rollback();
+            $RspCode = "99";
+            $Message = "Transaction failed";
         }
     }
 } else {

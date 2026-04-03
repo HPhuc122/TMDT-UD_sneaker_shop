@@ -7,24 +7,27 @@ require_once("../includes/db.php");
 
 // db.php đã xử lý session_name + session_start rồi
 
-if (!isset($_SESSION['user_id'])) {
+if (!isLoggedIn()) {
     die("Lỗi: Phiên đăng nhập không hợp lệ");
 }
 
-// Lấy đơn hàng online đã được tạo trước đó
-$order_id = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
+$user_id = (int)$_SESSION['user_id'];
+$order_id = (int)($_GET['order_id'] ?? 0);
 if ($order_id <= 0) {
     die("Lỗi: Thiếu mã đơn hàng");
 }
 
-$user_id = (int)$_SESSION['user_id'];
-$order = $conn->query("SELECT * FROM orders WHERE id=$order_id AND user_id=$user_id AND payment_method='online' LIMIT 1")->fetch_assoc();
+$order = $conn->query("SELECT * FROM orders WHERE id=$order_id AND user_id=$user_id")->fetch_assoc();
 if (!$order) {
-    die("Lỗi: Không tìm thấy đơn hàng thanh toán online");
+    die("Lỗi: Không tìm thấy đơn hàng");
 }
 
-$vnp_TxnRef = (string)$order_id;
-$vnp_OrderInfo = "Thanh toan don hang";
+if ($order['payment_method'] !== 'online' || $order['status'] !== 'awaiting_payment') {
+    die("Lỗi: Trạng thái đơn hàng không hợp lệ để thanh toán VNPay");
+}
+
+$vnp_TxnRef = $order['order_code'];
+$vnp_OrderInfo = "Thanh toan don hang " . $order['order_code'];
 $vnp_Amount = (int)$order['total_amount'];
 $vnp_IpAddr = $_SERVER['REMOTE_ADDR'];
 

@@ -25,7 +25,7 @@ $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(
     WHERE $where ORDER BY p.name LIMIT $per_page OFFSET $offset");
 
 $categories = $conn->query("SELECT * FROM categories ORDER BY name");
-$params = http_build_query(array_filter(['q'=>$q,'cat_id'=>$cat_id,'min_price'=>$min_price,'max_price'=>$max_price]));
+$params = http_build_query(array_filter(['q' => $q, 'cat_id' => $cat_id, 'min_price' => $min_price, 'max_price' => $max_price]));
 ?>
 
 <div class="container my-4">
@@ -60,7 +60,7 @@ $params = http_build_query(array_filter(['q'=>$q,'cat_id'=>$cat_id,'min_price'=>
                                     $categories->data_seek(0);
                                     while ($c = $categories->fetch_assoc()):
                                     ?>
-                                    <option value="<?= $c['id'] ?>" <?= $cat_id == $c['id'] ? 'selected' : '' ?>><?= htmlspecialchars($c['name']) ?></option>
+                                        <option value="<?= $c['id'] ?>" <?= $cat_id == $c['id'] ? 'selected' : '' ?>><?= htmlspecialchars($c['name']) ?></option>
                                     <?php endwhile; ?>
                                 </select>
                             </div>
@@ -81,59 +81,59 @@ $params = http_build_query(array_filter(['q'=>$q,'cat_id'=>$cat_id,'min_price'=>
 
     <!-- Results -->
     <?php if ($q || $cat_id || $min_price || $max_price): ?>
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <p class="text-muted mb-0">Tìm thấy <strong><?= $total ?></strong> sản phẩm <?= $q ? "cho \"<strong>" . htmlspecialchars($q) . "</strong>\"" : '' ?></p>
-        <?php if ($q || $cat_id || $min_price || $max_price): ?>
-        <a href="search.php" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x me-1"></i>Xóa bộ lọc</a>
-        <?php endif; ?>
-    </div>
-
-    <?php if ($total === 0): ?>
-    <div class="alert alert-info text-center py-5">
-        <i class="bi bi-search fs-2 d-block mb-3"></i>
-        Không tìm thấy sản phẩm phù hợp. Hãy thử từ khóa khác.
-    </div>
-    <?php else: ?>
-    <div class="row g-4">
-        <?php while ($p = $products->fetch_assoc()): ?>
-        <div class="col-sm-6 col-lg-3">
-            <div class="card product-card h-100 shadow-sm">
-                <?php if ($p['image'] && file_exists('uploads/' . $p['image'])): ?>
-                <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top product-img" alt="">
-                <?php else: ?>
-                <div class="product-img d-flex align-items-center justify-content-center bg-light">
-                    <i class="bi bi-shoe fs-1 text-secondary"></i>
-                </div>
-                <?php endif; ?>
-                <div class="card-body d-flex flex-column">
-                    <span class="badge text-white small mb-2" style="background:#ff6b35"><?= htmlspecialchars($p['cat_name']) ?></span>
-                    <h6 class="flex-grow-1"><?= htmlspecialchars($p['name']) ?></h6>
-                    <p class="price-tag mb-2"><?= formatPrice($p['sell_price']) ?></p>
-                    <a href="product.php?id=<?= $p['id'] ?>" class="btn btn-primary btn-sm">Xem chi tiết</a>
-                </div>
-            </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <p class="text-muted mb-0">Tìm thấy <strong><?= $total ?></strong> sản phẩm <?= $q ? "cho \"<strong>" . htmlspecialchars($q) . "</strong>\"" : '' ?></p>
+            <?php if ($q || $cat_id || $min_price || $max_price): ?>
+                <a href="search.php" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x me-1"></i>Xóa bộ lọc</a>
+            <?php endif; ?>
         </div>
-        <?php endwhile; ?>
-    </div>
 
-    <!-- Pagination -->
-    <?php if ($total_pages > 1): ?>
-    <nav class="mt-4">
-        <ul class="pagination justify-content-center">
-            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-            <li class="page-item <?= $i==$page?'active':'' ?>">
-                <a class="page-link" href="?<?= $params ?>&page=<?= $i ?>"><?= $i ?></a>
-            </li>
-            <?php endfor; ?>
-        </ul>
-    </nav>
-    <?php endif; ?>
-    <?php endif; ?>
+        <?php if ($total === 0): ?>
+            <div class="alert alert-info text-center py-5">
+                <i class="bi bi-search fs-2 d-block mb-3"></i>
+                Không tìm thấy sản phẩm phù hợp. Hãy thử từ khóa khác.
+            </div>
+        <?php else: ?>
+            <div class="row g-4">
+                <?php while ($p = $products->fetch_assoc()): ?>
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="card product-card h-100 shadow-sm">
+                            <?php if ($p['image'] && file_exists('uploads/' . $p['image'])): ?>
+                                <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top product-img" alt="">
+                            <?php else: ?>
+                                <div class="product-img d-flex align-items-center justify-content-center bg-light">
+                                    <i class="bi bi-shoe fs-1 text-secondary"></i>
+                                </div>
+                            <?php endif; ?>
+                            <div class="card-body d-flex flex-column">
+                                <span class="badge text-white small mb-2" style="background:#ff6b35"><?= htmlspecialchars($p['cat_name']) ?></span>
+                                <h6 class="flex-grow-1"><?= htmlspecialchars($p['name']) ?></h6>
+                                <p class="price-tag mb-2"><?= formatPrice($p['sell_price']) ?></p>
+                                <a href="product.php?id=<?= $p['id'] ?>" class="btn btn-primary btn-sm">Xem chi tiết</a>
+                            </div>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            </div>
+
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+                <nav class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                            <li class="page-item <?= $i == $page ? 'active' : '' ?>">
+                                <a class="page-link" href="?<?= $params ?>&page=<?= $i ?>"><?= $i ?></a>
+                            </li>
+                        <?php endfor; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
+        <?php endif; ?>
     <?php else: ?>
-    <div class="text-center py-5 text-muted">
-        <i class="bi bi-search fs-1 d-block mb-3"></i>
-        Nhập từ khóa để tìm kiếm sản phẩm
-    </div>
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-search fs-1 d-block mb-3"></i>
+            Nhập từ khóa để tìm kiếm sản phẩm
+        </div>
     <?php endif; ?>
 </div>
 

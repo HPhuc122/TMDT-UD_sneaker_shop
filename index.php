@@ -5,23 +5,13 @@ require_once 'includes/header.php';
 $pageTitle = 'Trang chủ';
 
 // Featured products
-// Support both newer schema (stock_quantity) and older schema (quantity)
-$stockFilter = '1=1';
-$hasStockQty = $conn->query("SHOW COLUMNS FROM products LIKE 'stock_quantity'");
-if ($hasStockQty && $hasStockQty->num_rows > 0) {
-    $stockFilter = 'p.stock_quantity > 0';
-} else {
-    $hasQty = $conn->query("SHOW COLUMNS FROM products LIKE 'quantity'");
-    if ($hasQty && $hasQty->num_rows > 0) {
-        $stockFilter = 'p.quantity > 0';
-    }
-}
-
-$sql = "SELECT p.*, c.name as cat_name,
+$sql = "SELECT DISTINCT p.*, c.name as cat_name,
         ROUND(p.import_price * (1 + p.profit_rate/100)) as sell_price
         FROM products p JOIN categories c ON p.category_id = c.id
-        WHERE p.status = 'active' AND $stockFilter
-        ORDER BY p.created_at DESC LIMIT 8";
+                        JOIN product_varieties pv ON p.id = pv.product_id
+        WHERE p.status = 'active' AND pv.stock_quantity > 0
+        ORDER BY p.created_at DESC 
+        LIMIT 8";
 $products = $conn->query($sql);
 
 // Categories with count
@@ -55,15 +45,15 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count
         <h3 class="section-title mb-4">Danh Mục Sản Phẩm</h3>
         <div class="row g-3">
             <?php while ($cat = $categories->fetch_assoc()): ?>
-            <div class="col-6 col-md-3">
-                <a href="category.php?id=<?= $cat['id'] ?>" class="text-decoration-none">
-                    <div class="card text-center p-3 h-100 border-0 shadow-sm" style="border-radius:12px">
-                        <i class="bi bi-grid fs-2 text-warning mb-2"></i>
-                        <h6 class="mb-1 text-dark"><?= htmlspecialchars($cat['name']) ?></h6>
-                        <small class="text-muted"><?= $cat['product_count'] ?> sản phẩm</small>
-                    </div>
-                </a>
-            </div>
+                <div class="col-6 col-md-3">
+                    <a href="category.php?id=<?= $cat['id'] ?>" class="text-decoration-none">
+                        <div class="card text-center p-3 h-100 border-0 shadow-sm" style="border-radius:12px">
+                            <i class="bi bi-grid fs-2 text-warning mb-2"></i>
+                            <h6 class="mb-1 text-dark"><?= htmlspecialchars($cat['name']) ?></h6>
+                            <small class="text-muted"><?= $cat['product_count'] ?> sản phẩm</small>
+                        </div>
+                    </a>
+                </div>
             <?php endwhile; ?>
         </div>
     </div>
@@ -76,25 +66,25 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count
         </div>
         <div class="row g-4">
             <?php while ($p = $products->fetch_assoc()): ?>
-            <div class="col-6 col-md-4 col-lg-3">
-                <div class="card product-card h-100 shadow-sm">
-                    <?php if ($p['image'] && file_exists('uploads/' . $p['image'])): ?>
-                    <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top product-img" alt="<?= htmlspecialchars($p['name']) ?>">
-                    <?php else: ?>
-                    <div class="product-img d-flex align-items-center justify-content-center bg-light">
-                        <i class="bi bi-shoe fs-1 text-secondary"></i>
-                    </div>
-                    <?php endif; ?>
-                    <div class="card-body d-flex flex-column">
-                        <span class="badge badge-category text-white small mb-2"><?= htmlspecialchars($p['cat_name']) ?></span>
-                        <h6 class="card-title"><?= htmlspecialchars($p['name']) ?></h6>
-                        <p class="price-tag mt-auto mb-2"><?= formatPrice($p['sell_price']) ?></p>
-                        <a href="product.php?id=<?= $p['id'] ?>" class="btn btn-primary btn-sm">
-                            <i class="bi bi-eye me-1"></i>Xem chi tiết
-                        </a>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="card product-card h-100 shadow-sm">
+                        <?php if ($p['image'] && file_exists('uploads/' . $p['image'])): ?>
+                            <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top product-img" alt="<?= htmlspecialchars($p['name']) ?>">
+                        <?php else: ?>
+                            <div class="product-img d-flex align-items-center justify-content-center bg-light">
+                                <i class="bi bi-shoe fs-1 text-secondary"></i>
+                            </div>
+                        <?php endif; ?>
+                        <div class="card-body d-flex flex-column">
+                            <span class="badge badge-category text-white small mb-2"><?= htmlspecialchars($p['cat_name']) ?></span>
+                            <h6 class="card-title"><?= htmlspecialchars($p['name']) ?></h6>
+                            <p class="price-tag mt-auto mb-2"><?= formatPrice($p['sell_price']) ?></p>
+                            <a href="product.php?id=<?= $p['id'] ?>" class="btn btn-primary btn-sm">
+                                <i class="bi bi-eye me-1"></i>Xem chi tiết
+                            </a>
+                        </div>
                     </div>
                 </div>
-            </div>
             <?php endwhile; ?>
         </div>
     </div>
