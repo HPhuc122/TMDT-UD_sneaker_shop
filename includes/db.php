@@ -82,6 +82,109 @@ function generateCode($prefix) {
     return $prefix . date('YmdHis') . rand(100, 999);
 }
 
+function hasTableColumn($conn, $table, $column) {
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (isset($cache[$key])) return $cache[$key];
+    $res = $conn->query("SHOW COLUMNS FROM {$table} LIKE '" . $conn->real_escape_string($column) . "'");
+    $cache[$key] = ($res && $res->num_rows > 0);
+    return $cache[$key];
+}
+
+function getStockColumnName($conn) {
+    if (hasTableColumn($conn, 'products', 'stock_quantity')) return 'stock_quantity';
+    if (hasTableColumn($conn, 'products', 'quantity')) return 'quantity';
+    return null;
+}
+
+function getPendingPaymentStatuses($conn) {
+    $statuses = [];
+    $statusCol = $conn->query("SHOW COLUMNS FROM orders LIKE 'status'");
+    if ($statusCol && $statusCol->num_rows > 0) {
+        $statusDef = $statusCol->fetch_assoc();
+        $type = $statusDef['Type'] ?? '';
+        if (strpos($type, "'pending_payment'") !== false) $statuses[] = 'pending_payment';
+        if (strpos($type, "'awaiting_payment'") !== false) $statuses[] = 'awaiting_payment';
+    }
+    if (empty($statuses)) $statuses[] = 'pending';
+    return $statuses;
+}
+
+function getOnlinePendingStatus($conn) {
+    $statuses = getPendingPaymentStatuses($conn);
+    if (in_array('pending_payment', $statuses, true)) return 'pending_payment';
+    if (in_array('awaiting_payment', $statuses, true)) return 'awaiting_payment';
+    return 'pending';
+}
+
+function isPendingPaymentOrderStatus($conn, $status) {
+    return in_array($status, getPendingPaymentStatuses($conn), true);
+}
+
+function cancelExpiredPendingOrders($conn, $limit = 100) {
+    if (!hasTableColumn($conn, 'orders', 'payment_deadline')) return 0;
+
+    $pendingStatuses = getPendingPaymentStatuses($conn);
+    if (empty($pendingStatuses)) return 0;
+
+    $stockColumn = getStockColumnName($conn);
+    if (!$stockColumn) return 0;
+
+    $statusSql = [];
+    foreach ($pendingStatuses as $s) {
+        $statusSql[] = "'" . $conn->real_escape_string($s) . "'";
+    }
+    $inStatuses = implode(',', $statusSql);
+    $hasPaymentStatus = hasTableColumn($conn, 'orders', 'payment_status');
+
+    $cancelled = 0;
+    $limit = max(1, (int)$limit);
+
+    try {
+        $conn->begin_transaction();
+
+        $wherePaid = $hasPaymentStatus ? "AND (payment_status IS NULL OR payment_status <> 'paid')" : '';
+
+        // Backfill deadline from order creation time for old rows.
+        $conn->query("UPDATE orders SET payment_deadline = DATE_ADD(created_at, INTERVAL 24 HOUR) WHERE status IN ($inStatuses) AND payment_deadline IS NULL $wherePaid");
+
+        $expired = $conn->query("SELECT id FROM orders WHERE status IN ($inStatuses) AND payment_deadline IS NOT NULL AND payment_deadline < NOW() $wherePaid ORDER BY payment_deadline ASC LIMIT $limit FOR UPDATE");
+
+        if ($expired && $expired->num_rows > 0) {
+            while ($row = $expired->fetch_assoc()) {
+                $oid = (int)$row['id'];
+
+                $setSql = "status='cancelled'";
+                if ($hasPaymentStatus) $setSql .= ", payment_status='failed'";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$oid");
+
+                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$oid");
+                while ($d = $details->fetch_assoc()) {
+                    $pid = (int)$d['product_id'];
+                    $qty = (int)$d['quantity'];
+                    $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
+                }
+
+                $cancelled++;
+            }
+        }
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        return 0;
+    }
+
+    return $cancelled;
+}
+
+function runExpiredOrderCancellationFallback($conn) {
+    static $alreadyRan = false;
+    if ($alreadyRan) return;
+    $alreadyRan = true;
+    cancelExpiredPendingOrders($conn, 50);
+}
+
 // Start USER session (only if not already started by admin side)
 // Admin files set their own session name before including db.php
 if (session_status() === PHP_SESSION_NONE) {
@@ -95,4 +198,7 @@ if (session_status() === PHP_SESSION_NONE) {
 if (session_name() === USER_SESSION_NAME) {
     kickIfLocked();
 }
+
+// Fallback: auto-cancel expired unpaid orders on normal traffic.
+runExpiredOrderCancellationFallback($conn);
 ?>

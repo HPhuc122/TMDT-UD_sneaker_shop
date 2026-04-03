@@ -3,8 +3,91 @@ require_once 'includes/db.php';
 if (!isLoggedIn()) redirect('login.php?redirect=my_orders.php');
 
 $pageTitle = 'Đơn hàng của tôi';
-require_once 'includes/header.php';
 $user_id = $_SESSION['user_id'];
+
+$msg = $_SESSION['orders_msg'] ?? '';
+unset($_SESSION['orders_msg']);
+
+$hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_status'")->num_rows > 0);
+$hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
+
+function getCancelCountdownNotice($order, $hasPaymentDeadlineCol) {
+    $createdAtTs = strtotime($order['created_at'] ?? 'now');
+    $deadlineTs = $createdAtTs + 86400;
+
+    if ($hasPaymentDeadlineCol && !empty($order['payment_deadline'])) {
+        $parsedDeadline = strtotime($order['payment_deadline']);
+        if ($parsedDeadline !== false) {
+            $deadlineTs = $parsedDeadline;
+        }
+    }
+
+    $remaining = $deadlineTs - time();
+    if ($remaining <= 0) {
+        return 'Đơn đã quá 24 giờ chưa thanh toán và sẽ tự động hủy sớm, hàng sẽ được hoàn về kho.';
+    }
+
+    $hours = intdiv($remaining, 3600);
+    $minutes = intdiv($remaining % 3600, 60);
+    return 'Đơn sẽ tự hủy sau ' . $hours . ' giờ ' . $minutes . ' phút nếu chưa thanh toán.';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
+    $orderId = (int)($_POST['order_id'] ?? 0);
+    $action = sanitize($conn, $_POST['order_action'] ?? '');
+    $returnId = isset($_POST['return_id']) ? (int)$_POST['return_id'] : 0;
+
+    $order = $conn->query("SELECT id, status, payment_method FROM orders WHERE id=$orderId AND user_id=$user_id LIMIT 1")->fetch_assoc();
+    if (!$order) {
+        $_SESSION['orders_msg'] = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Không tìm thấy đơn hàng.</div>';
+    } elseif (!isPendingPaymentOrderStatus($conn, $order['status'])) {
+        $_SESSION['orders_msg'] = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Chỉ đơn chờ thanh toán mới thực hiện thao tác này.</div>';
+    } else {
+        if ($action === 'pay_now') {
+            if ($order['payment_method'] !== 'online') {
+                $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+            } else {
+                $setSql = "status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+            }
+            redirect('vnpay/vnpay_create_payment.php?order_id=' . $orderId);
+        }
+
+        if ($action === 'change_payment_method') {
+            $newMethod = sanitize($conn, $_POST['new_payment_method'] ?? 'cash');
+            $allowedMethods = ['cash', 'transfer', 'online'];
+            if (!in_array($newMethod, $allowedMethods, true)) {
+                $_SESSION['orders_msg'] = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Phương thức thanh toán không hợp lệ.</div>';
+            } else {
+                if ($newMethod === 'online') {
+                    $newStatus = getOnlinePendingStatus($conn);
+                    $setSql = "payment_method='online', status='" . $conn->real_escape_string($newStatus) . "'";
+                    if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                    if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                    $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+                } else {
+                    $setSql = "payment_method='$newMethod', status='pending'";
+                    if ($hasPaymentStatusCol) $setSql .= ", payment_status=NULL";
+                    if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                    $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+                }
+
+                $_SESSION['orders_msg'] = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã đổi phương thức thanh toán thành công.</div>';
+            }
+        }
+    }
+
+    $backUrl = 'my_orders.php';
+    if ($returnId > 0) $backUrl .= '?id=' . $returnId;
+    redirect($backUrl);
+}
+
+require_once 'includes/header.php';
 
 $orders = $conn->query("SELECT * FROM orders WHERE user_id=$user_id ORDER BY created_at DESC");
 
@@ -26,6 +109,10 @@ if ($detail_id > 0) {
 
 <div class="container my-4">
     <h3 class="section-title mb-4">Đơn Hàng Của Tôi</h3>
+
+    <?php if ($msg): ?>
+    <?= $msg ?>
+    <?php endif; ?>
 
     <?php if ($orderDetail): ?>
         <!-- Order Detail View -->

@@ -37,11 +37,9 @@ foreach ($inputData as $key => $value) {
 
 $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
 
-if ($secureHash == $vnp_SecureHash) {
-    $vnp_TxnRef      = $inputData['vnp_TxnRef'];
-    $vnp_Amount      = $inputData['vnp_Amount'] / 100;   // Chia lại 100
-    $vnp_ResponseCode = $inputData['vnp_ResponseCode'];
-    $vnp_TransactionStatus = $inputData['vnp_TransactionStatus'];
+$hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_status'")->num_rows > 0);
+$hasZpTransIdCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'zp_trans_id'")->num_rows > 0);
+$hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
 
     $txnRefSafe = sanitize($conn, $vnp_TxnRef);
     $order = $conn->query("SELECT * FROM orders WHERE order_code='$txnRefSafe' LIMIT 1")->fetch_assoc();

@@ -124,6 +124,19 @@ if ($secureHash !== $vnp_SecureHash) {
             $ord = null;
             $error_msg = $e->getMessage();
         }
+
+        if ($ord['status'] === 'confirmed' || $ord['status'] === 'delivered') {
+            $setSql = "status=status";
+            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+            if ($hasZpTransIdCol && $vnpTransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnpTransactionNo) . "'";
+            $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
+        }
+
+        $payment_success = true;
+        $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id")->fetch_assoc();
+        $_SESSION['cart'] = [];
+        unset($_SESSION['pending_online_order_id']);
     }
 }
 
@@ -161,11 +174,11 @@ if ($secureHash !== $vnp_SecureHash) {
                             </div>
                             <div class="mb-2">
                                 <small class="text-muted">Mã giao dịch VNPay:</small>
-                                <p class="fw-bold"><?= htmlspecialchars($_GET['vnp_TxnRef'] ?? '') ?></p>
+                                <p class="fw-bold"><?= htmlspecialchars((string)($_GET['vnp_TxnRef'] ?? '')) ?></p>
                             </div>
                             <div class="mb-2">
                                 <small class="text-muted">Số tiền thanh toán:</small>
-                                <p class="fw-bold" style="color:#ff6b35"><?= number_format($_GET['vnp_Amount']/100 ?? 0); ?> VND</p>
+                                <p class="fw-bold" style="color:#ff6b35"><?= number_format(((int)($_GET['vnp_Amount'] ?? 0)) / 100); ?> VND</p>
                             </div>
                             <hr>
                             <div>

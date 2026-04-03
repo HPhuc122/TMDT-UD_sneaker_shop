@@ -153,7 +153,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
                 $_SESSION['cart'] = [];
                 redirect('checkout.php?success=' . $order_id);
             } else {
-                $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
+                $order_id = 0;
+                try {
+                    $conn->begin_transaction();
+
+                    $order_code = generateCode('DH');
+                    $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                    $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+                    if (!$stmt->execute()) {
+                        throw new Exception('INSERT_ORDER_FAILED');
+                    }
+
+                    $order_id = $conn->insert_id;
+                    foreach ($cart as $item) {
+                        $pid   = (int)$item['product_id'];
+                        $qty   = (int)$item['qty'];
+                        $price = (float)$item['price'];
+
+                        if (!$conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)")) {
+                            throw new Exception('INSERT_ORDER_DETAIL_FAILED');
+                        }
+
+                        $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} - $qty WHERE id=$pid AND {$stockColumn} >= $qty");
+                        if ($conn->affected_rows === 0) {
+                            throw new Exception('INSUFFICIENT_STOCK');
+                        }
+                    }
+
+                    $conn->commit();
+                    $_SESSION['cart'] = [];
+                    redirect('checkout.php?success=' . $order_id);
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $error = 'Không thể tạo đơn hàng do tồn kho thay đổi hoặc lỗi hệ thống. Vui lòng thử lại.';
+                }
             }
         }
     }
