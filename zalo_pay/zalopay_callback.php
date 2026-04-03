@@ -24,33 +24,26 @@ try {
         )->fetch_assoc();
 
         if ($order) {
+            $hasPaymentStatusCol = hasTableColumn($conn, 'orders', 'payment_status');
+            $hasPaymentDeadlineCol = hasTableColumn($conn, 'orders', 'payment_deadline');
             $conn->begin_transaction();
             try {
                 $oid = (int)$order['id'];
                 $locked = $conn->query("SELECT * FROM orders WHERE id=$oid FOR UPDATE")->fetch_assoc();
 
                 if ($locked && $locked['status'] !== 'confirmed') {
-                    $items = $conn->query(
-                        "SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$oid"
-                    );
-                    while ($item = $items->fetch_assoc()) {
-                        $pid = (int)$item['product_id'];
-                        $size = (int)$item['size_id'];
-                        $color = (int)$item['color_id'];
-                        $qty = (int)$item['quantity'];
-
-                        $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
-                        if (!$stock || (int)$stock['stock_quantity'] < $qty) {
-                            throw new Exception('Insufficient stock');
-                        }
-
-                        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
-                        if ($conn->affected_rows !== 1) {
-                            throw new Exception('Stock update race condition');
-                        }
+                    if (!isPendingPaymentOrderStatus($conn, $locked['status'])) {
+                        throw new Exception('Invalid order status for payment confirmation');
                     }
 
-                    $conn->query("UPDATE orders SET zp_trans_id='$zp_trans_id', status='confirmed' WHERE id=$oid AND status='awaiting_payment'");
+                    $setSql = "status='confirmed', zp_trans_id='$zp_trans_id'";
+                    if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+                    if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                    $fromStatus = $conn->real_escape_string($locked['status']);
+                    $conn->query("UPDATE orders SET $setSql WHERE id=$oid AND status='$fromStatus'");
+                    if ($conn->affected_rows !== 1) {
+                        throw new Exception('Order already processed');
+                    }
                 }
 
                 $conn->commit();

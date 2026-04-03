@@ -18,6 +18,8 @@ if ($app_trans_id) {
 $success = ($status === 1) && ($order !== null);
 
 if ($success && $order) {
+  $hasPaymentStatusCol = hasTableColumn($conn, 'orders', 'payment_status');
+  $hasPaymentDeadlineCol = hasTableColumn($conn, 'orders', 'payment_deadline');
   // ✅ THÀNH CÔNG
   $conn->begin_transaction();
   try {
@@ -27,27 +29,15 @@ if ($success && $order) {
     if ($locked && $locked['status'] === 'confirmed') {
       // Đã xử lý thành công trước đó
     } else {
-      $items = $conn->query(
-        "SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$oid"
-      );
-      while ($item = $items->fetch_assoc()) {
-        $pid = (int)$item['product_id'];
-        $size = (int)$item['size_id'];
-        $color = (int)$item['color_id'];
-        $qty = (int)$item['quantity'];
-
-        $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
-        if (!$stock || (int)$stock['stock_quantity'] < $qty) {
-          throw new Exception('Sản phẩm không đủ tồn kho để hoàn tất thanh toán.');
-        }
-
-        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
-        if ($conn->affected_rows !== 1) {
-          throw new Exception('Không thể cập nhật tồn kho do cạnh tranh dữ liệu.');
-        }
+      if (!isPendingPaymentOrderStatus($conn, $locked['status'])) {
+        throw new Exception('Trạng thái đơn hàng không hợp lệ để xác nhận thanh toán.');
       }
 
-      $conn->query("UPDATE orders SET status='confirmed' WHERE id=$oid AND status='awaiting_payment'");
+      $setSql = "status='confirmed'";
+      if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+      if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+      $fromStatus = $conn->real_escape_string($locked['status']);
+      $conn->query("UPDATE orders SET $setSql WHERE id=$oid AND status='$fromStatus'");
       if ($conn->affected_rows !== 1) {
         throw new Exception('Đơn hàng đã được xử lý bởi giao dịch khác.');
       }
@@ -64,8 +54,10 @@ if ($success && $order) {
 } elseif (!$success && $order) {
   // ❌ THẤT BẠI / HỦY / BACK
   // KHÔNG xóa đơn, KHÔNG trừ tồn kho, giữ trạng thái chờ thanh toán
-  if ($order['status'] !== 'confirmed') {
-    $conn->query("UPDATE orders SET status='awaiting_payment' WHERE id={$order['id']}");
+  if ($order['status'] !== 'confirmed' && isPendingPaymentOrderStatus($conn, $order['status'])) {
+    $setSql = "status='" . $conn->real_escape_string($order['status']) . "'";
+    if (hasTableColumn($conn, 'orders', 'payment_status')) $setSql .= ", payment_status='pending'";
+    $conn->query("UPDATE orders SET $setSql WHERE id={$order['id']}");
   }
   $order = $conn->query("SELECT * FROM orders WHERE id={$order['id']}")->fetch_assoc();
 }

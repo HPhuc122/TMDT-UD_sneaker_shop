@@ -41,6 +41,7 @@ $hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_sta
 $hasZpTransIdCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'zp_trans_id'")->num_rows > 0);
 $hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
 
+if ($secureHash == $vnp_SecureHash) {
     $txnRefSafe = sanitize($conn, $vnp_TxnRef);
     $order = $conn->query("SELECT * FROM orders WHERE order_code='$txnRefSafe' LIMIT 1")->fetch_assoc();
 
@@ -55,33 +56,23 @@ $hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_d
             $orderRow = $conn->query("SELECT * FROM orders WHERE id=$orderId FOR UPDATE")->fetch_assoc();
 
             if ($orderRow['status'] === 'confirmed') {
+                $setSql = "status='confirmed'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
                 $RspCode = "00";
                 $Message = "Success";
                 $conn->commit();
             } elseif ($isSuccess) {
-                if ($orderRow['status'] !== 'awaiting_payment') {
+                if (!isPendingPaymentOrderStatus($conn, $orderRow['status'])) {
                     throw new Exception('Invalid order status for payment confirmation');
                 }
 
-                $details = $conn->query("SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$orderId");
-                while ($item = $details->fetch_assoc()) {
-                    $pid = (int)$item['product_id'];
-                    $size = (int)$item['size_id'];
-                    $color = (int)$item['color_id'];
-                    $qty = (int)$item['quantity'];
-
-                    $stock = $conn->query("SELECT stock_quantity FROM product_varieties WHERE product_id=$pid AND size_id=$size AND color_id=$color FOR UPDATE")->fetch_assoc();
-                    if (!$stock || (int)$stock['stock_quantity'] < $qty) {
-                        throw new Exception('Insufficient stock');
-                    }
-
-                    $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity - $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color AND stock_quantity >= $qty");
-                    if ($conn->affected_rows !== 1) {
-                        throw new Exception('Stock update race condition');
-                    }
-                }
-
-                $conn->query("UPDATE orders SET status='confirmed' WHERE id=$orderId AND status='awaiting_payment'");
+                $fromStatus = $conn->real_escape_string($orderRow['status']);
+                $setSql = "status='confirmed'";
+                if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$orderId AND status='$fromStatus'");
                 if ($conn->affected_rows !== 1) {
                     throw new Exception('Order already processed');
                 }
@@ -89,8 +80,12 @@ $hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_d
                 $Message = "Success";
                 $conn->commit();
             } else {
-                // Thất bại/hủy/lỗi -> giữ awaiting_payment
-                $conn->query("UPDATE orders SET status='awaiting_payment' WHERE id=$orderId AND status='awaiting_payment'");
+                // Thất bại/hủy/lỗi -> giữ trạng thái chờ thanh toán, vẫn giữ tồn kho đến khi hết hạn.
+                if (isPendingPaymentOrderStatus($conn, $orderRow['status'])) {
+                    $setSql = "status='" . $conn->real_escape_string($orderRow['status']) . "'";
+                    if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
+                    $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+                }
                 $RspCode = "00";
                 $Message = "Success";
                 $conn->commit();

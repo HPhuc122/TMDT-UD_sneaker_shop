@@ -12,17 +12,25 @@ $hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_sta
 $hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
 
 function getCancelCountdownNotice($order, $hasPaymentDeadlineCol) {
-    $createdAtTs = strtotime($order['created_at'] ?? 'now');
-    $deadlineTs = $createdAtTs + 86400;
+    if (isset($order['payment_remaining_seconds'])) {
+        $remaining = (int)$order['payment_remaining_seconds'];
+    } else {
+        $createdAtTs = strtotime($order['created_at'] ?? 'now');
+        $deadlineTs = $createdAtTs + 86400;
 
-    if ($hasPaymentDeadlineCol && !empty($order['payment_deadline'])) {
-        $parsedDeadline = strtotime($order['payment_deadline']);
-        if ($parsedDeadline !== false) {
-            $deadlineTs = $parsedDeadline;
+        if ($hasPaymentDeadlineCol && !empty($order['payment_deadline'])) {
+            $parsedDeadline = strtotime($order['payment_deadline']);
+            if ($parsedDeadline !== false) {
+                $deadlineTs = $parsedDeadline;
+            }
         }
+
+        $remaining = $deadlineTs - time();
     }
 
-    $remaining = $deadlineTs - time();
+    if ($remaining > 86400) {
+        $remaining = 86400;
+    }
     if ($remaining <= 0) {
         return 'Đơn đã quá 24 giờ chưa thanh toán và sẽ tự động hủy sớm, hàng sẽ được hoàn về kho.';
     }
@@ -89,9 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
 
 require_once 'includes/header.php';
 
-$orders = $conn->query("SELECT * FROM orders WHERE user_id=$user_id ORDER BY created_at DESC");
+$remainingExpr = "TIMESTAMPDIFF(SECOND, NOW(), COALESCE(payment_deadline, DATE_ADD(created_at, INTERVAL 24 HOUR)))";
+if (!$hasPaymentDeadlineCol) {
+    $remainingExpr = "TIMESTAMPDIFF(SECOND, NOW(), DATE_ADD(created_at, INTERVAL 24 HOUR))";
+}
+$orders = $conn->query("SELECT o.*, $remainingExpr AS payment_remaining_seconds FROM orders o WHERE o.user_id=$user_id ORDER BY o.created_at DESC");
 
 $statusLabels = [
+    'pending_payment'  => ['Chờ thanh toán', 'secondary'],
     'awaiting_payment' => ['Chờ thanh toán', 'secondary'],
     'pending'          => ['Chờ xử lý',      'warning'],
     'confirmed'        => ['Đã xác nhận',    'info'],
@@ -102,7 +115,7 @@ $statusLabels = [
 $detail_id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $orderDetail = null;
 if ($detail_id > 0) {
-    $r = $conn->query("SELECT * FROM orders WHERE id=$detail_id AND user_id=$user_id");
+    $r = $conn->query("SELECT o.*, $remainingExpr AS payment_remaining_seconds FROM orders o WHERE o.id=$detail_id AND o.user_id=$user_id");
     $orderDetail = $r->fetch_assoc();
 }
 ?>
@@ -140,7 +153,12 @@ if ($detail_id > 0) {
                         $pm = ['cash' => 'Tiền mặt (COD)', 'online' => 'Trực tuyến'];
                         ?>
                         <p class="mb-0">Thanh toán: <?= $pm[$orderDetail['payment_method']] ?? 'Khác' ?></p>
-                        <?php if ($orderDetail['status'] === 'awaiting_payment'): ?>
+                        <?php if (isPendingPaymentOrderStatus($conn, $orderDetail['status'])): ?>
+                        <div class="alert alert-warning py-2 px-3 mt-3 mb-0 small">
+                            <i class="bi bi-clock-history me-2"></i><?= htmlspecialchars(getCancelCountdownNotice($orderDetail, $hasPaymentDeadlineCol)) ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (isPendingPaymentOrderStatus($conn, $orderDetail['status'])): ?>
                         <div class="mt-3 d-flex gap-2 flex-wrap">
                             <?php if ($orderDetail['payment_method'] === 'online'): ?>
                             <a href="checkout.php?repay=<?= (int)$orderDetail['id'] ?>&action=pay" class="btn btn-primary btn-sm">
@@ -219,13 +237,18 @@ if ($detail_id > 0) {
                                     <td><?= date('d/m/Y H:i', strtotime($ord['created_at'])) ?></td>
                                     <td class="text-end fw-bold" style="color:#ff6b35"><?= formatPrice($ord['total_amount']) ?></td>
                                     <td><?= $pm[$ord['payment_method']] ?? 'Khác' ?></td>
-                                    <td><span class="badge bg-<?= $color ?>"><?= $label ?></span></td>
+                                    <td>
+                                        <span class="badge bg-<?= $color ?>"><?= $label ?></span>
+                                        <?php if (isPendingPaymentOrderStatus($conn, $ord['status'])): ?>
+                                            <div class="small text-muted mt-1"><?= htmlspecialchars(getCancelCountdownNotice($ord, $hasPaymentDeadlineCol)) ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-center">
                                         <div class="d-inline-flex align-items-center" style="width:76px;justify-content:space-between;">
                                             <a href="my_orders.php?id=<?= $ord['id'] ?>" class="btn btn-sm btn-outline-primary">
                                                 <i class="bi bi-eye"></i>
                                             </a>
-                                            <?php if ($ord['status'] === 'awaiting_payment' && $ord['payment_method'] === 'online'): ?>
+                                            <?php if (isPendingPaymentOrderStatus($conn, $ord['status']) && $ord['payment_method'] === 'online'): ?>
                                                 <a href="checkout.php?repay=<?= (int)$ord['id'] ?>&action=pay" class="btn btn-sm btn-primary">
                                                     <i class="bi bi-credit-card"></i>
                                                 </a>

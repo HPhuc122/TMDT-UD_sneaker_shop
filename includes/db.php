@@ -158,11 +158,17 @@ function cancelExpiredPendingOrders($conn, $limit = 100) {
                 if ($hasPaymentStatus) $setSql .= ", payment_status='failed'";
                 $conn->query("UPDATE orders SET $setSql WHERE id=$oid");
 
-                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$oid");
+                $details = $conn->query("SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$oid");
                 while ($d = $details->fetch_assoc()) {
                     $pid = (int)$d['product_id'];
+                    $size = (int)($d['size_id'] ?? 0);
+                    $color = (int)($d['color_id'] ?? 0);
                     $qty = (int)$d['quantity'];
-                    $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
+                    if ($size > 0 && $color > 0 && hasTableColumn($conn, 'product_varieties', 'stock_quantity')) {
+                        $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color");
+                    } else {
+                        $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
+                    }
                 }
 
                 $cancelled++;
