@@ -35,81 +35,53 @@ $ord = null;
 $order_id = null;
 $error_msg = '';
 
-// Kiểm tra chữ ký và xác thực thanh toán
-if ($secureHash == $vnp_SecureHash && $_GET['vnp_ResponseCode'] == '00') {
-    // ===== THANH TOÁN THÀNH CÔNG =====
-    // Kiểm tra thông tin vnpay có trong session
-    if (!isset($_SESSION['vnpay_info']) || !isset($_SESSION['user_id'])) {
-        $error_msg = 'Thông tin thanh toán không hợp lệ. Vui lòng liên hệ hỗ trợ.';
-    } else {
-        $user_id = $_SESSION['user_id'];
-        $vnpay_info = $_SESSION['vnpay_info'];
-        $cart_backup = $_SESSION['cart_backup'] ?? [];
-        
-        // Tạo mã đơn hàng
-        require_once '../includes/db.php';
-        $order_code = generateCode('DH');
-        $total_amount = (int)$vnpay_info['total_amount'];
-        
-        // Tạo đơn hàng
-        $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-        $status = 'confirmed';
-        $receiver_name = $vnpay_info['receiver_name'];
-        $receiver_phone = $vnpay_info['receiver_phone'];
-        $shipping_address = $vnpay_info['shipping_address'];
-        $ward = $vnpay_info['ward'];
-        $district = $vnpay_info['district'];
-        $city = $vnpay_info['city'];
-        $payment_method = 'online';
-        $notes = $vnpay_info['notes'];
+$hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_status'")->num_rows > 0);
+$hasZpTransIdCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'zp_trans_id'")->num_rows > 0);
+$hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
 
-        $stmt->bind_param(
-            'sisssssssdss',
-            $order_code,
-            $user_id,
-            $receiver_name,
-            $receiver_phone,
-            $shipping_address,
-            $ward,
-            $district,
-            $city,
-            $payment_method,
-            $total_amount,
-            $notes,
-            $status
-        );
-        
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
-            $payment_success = true;
-            
-            // Thêm chi tiết đơn hàng + cập nhật stock
-            foreach ($cart_backup as $item) {
-                $pid   = (int)$item['product_id'];
-                $qty   = (int)$item['qty'];
-                $price = (float)$item['price'];
-                $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
-                $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
-            }
-            
-            // Lấy thông tin đơn hàng để hiển thị
-            $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id")->fetch_assoc();
-            
-            // Xóa session vnpay
-            unset($_SESSION['vnpay_info']);
-            unset($_SESSION['cart_backup']);
-            $_SESSION['cart'] = [];
-        } else {
-            $error_msg = 'Lỗi khi tạo đơn hàng. Vui lòng liên hệ hỗ trợ.';
+// Kiểm tra chữ ký và xác thực thanh toán
+if ($secureHash == $vnp_SecureHash && ($_GET['vnp_ResponseCode'] ?? '') == '00') {
+    // ===== THANH TOÁN THÀNH CÔNG =====
+    $order_id = isset($_GET['vnp_TxnRef']) ? (int)$_GET['vnp_TxnRef'] : 0;
+    $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id AND payment_method='online' LIMIT 1")->fetch_assoc();
+
+    if (!$ord) {
+        $error_msg = 'Không tìm thấy đơn hàng online tương ứng giao dịch.';
+    } else {
+        $vnpTransactionNo = sanitize($conn, $_GET['vnp_TransactionNo'] ?? '');
+
+        if ($ord['status'] !== 'confirmed' && $ord['status'] !== 'delivered') {
+            $setSql = "status='confirmed'";
+            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+            if ($hasZpTransIdCol && $vnpTransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnpTransactionNo) . "'";
+            $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
         }
+
+        if ($ord['status'] === 'confirmed' || $ord['status'] === 'delivered') {
+            $setSql = "status=status";
+            if ($hasPaymentStatusCol) $setSql .= ", payment_status='paid'";
+            if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+            if ($hasZpTransIdCol && $vnpTransactionNo !== '') $setSql .= ", zp_trans_id='" . $conn->real_escape_string($vnpTransactionNo) . "'";
+            $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
+        }
+
+        $payment_success = true;
+        $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id")->fetch_assoc();
+        $_SESSION['cart'] = [];
+        unset($_SESSION['pending_online_order_id']);
     }
 } else {
     // ===== THANH TOÁN THẤT BẠI HOẶC INVALID SIGNATURE =====
     $error_msg = 'Thanh toán không thành công. Vui lòng thử lại.';
-    
-    // Clear vnpay session nhưng giữ lại cart để user có thể thử lại
-    unset($_SESSION['vnpay_info']);
-    unset($_SESSION['cart_backup']);
+
+    $order_id = isset($_GET['vnp_TxnRef']) ? (int)$_GET['vnp_TxnRef'] : 0;
+    if ($order_id > 0) {
+        $ord = $conn->query("SELECT * FROM orders WHERE id=$order_id AND payment_method='online' LIMIT 1")->fetch_assoc();
+        if ($ord && $hasPaymentStatusCol) {
+            $conn->query("UPDATE orders SET payment_status='failed' WHERE id=$order_id");
+        }
+    }
 }
 
 ?>
@@ -146,11 +118,11 @@ if ($secureHash == $vnp_SecureHash && $_GET['vnp_ResponseCode'] == '00') {
                             </div>
                             <div class="mb-2">
                                 <small class="text-muted">Mã giao dịch VNPay:</small>
-                                <p class="fw-bold"><?= htmlspecialchars($_GET['vnp_TxnRef'] ?? '') ?></p>
+                                <p class="fw-bold"><?= htmlspecialchars((string)($_GET['vnp_TxnRef'] ?? '')) ?></p>
                             </div>
                             <div class="mb-2">
                                 <small class="text-muted">Số tiền thanh toán:</small>
-                                <p class="fw-bold" style="color:#ff6b35"><?= number_format($_GET['vnp_Amount']/100 ?? 0); ?> VND</p>
+                                <p class="fw-bold" style="color:#ff6b35"><?= number_format(((int)($_GET['vnp_Amount'] ?? 0)) / 100); ?> VND</p>
                             </div>
                             <hr>
                             <div>
@@ -195,7 +167,7 @@ if ($secureHash == $vnp_SecureHash && $_GET['vnp_ResponseCode'] == '00') {
                         }
                         ?>
                     </p>
-                    <p class="text-muted"><strong>Lưu ý:</strong> Đơn hàng chưa được tạo. Sản phẩm trong giỏ hàng vẫn được giữ lại.</p>
+                    <p class="text-muted"><strong>Lưu ý:</strong> Đơn hàng đã được lưu ở trạng thái chờ thanh toán. Bạn có thể thanh toán lại từ trang đơn hàng.</p>
                     
                     <div class="mt-4 d-flex gap-2 justify-content-center flex-wrap">
                         <a href="../cart.php" class="btn btn-primary"><i class="bi bi-bag me-2"></i>Quay lại giỏ hàng</a>
@@ -206,10 +178,6 @@ if ($secureHash == $vnp_SecureHash && $_GET['vnp_ResponseCode'] == '00') {
             <?php endif; ?>
         </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>

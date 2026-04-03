@@ -7,17 +7,32 @@ require_once("../includes/db.php");
 
 // db.php đã xử lý session_name + session_start rồi
 
-// ==================== Nhận dữ liệu từ form checkout ====================
-// Lấy từ session (từ checkout.php)
-if (!isset($_SESSION['vnpay_info'])) {
-    die("Lỗi: Thông tin thanh toán không hợp lệ");
+if (!isset($_SESSION['user_id'])) {
+    die("Lỗi: Phiên đăng nhập không hợp lệ");
 }
 
-$vnpay_info = $_SESSION['vnpay_info'];
-$vnp_TxnRef = time();
+// Lấy đơn hàng online đã được tạo trước đó
+$order_id = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
+if ($order_id <= 0) {
+    die("Lỗi: Thiếu mã đơn hàng");
+}
+
+$user_id = (int)$_SESSION['user_id'];
+$order = $conn->query("SELECT * FROM orders WHERE id=$order_id AND user_id=$user_id AND payment_method='online' LIMIT 1")->fetch_assoc();
+if (!$order) {
+    die("Lỗi: Không tìm thấy đơn hàng thanh toán online");
+}
+
+$vnp_TxnRef = (string)$order_id;
 $vnp_OrderInfo = "Thanh toan don hang";
-$vnp_Amount = (int)$vnpay_info['total_amount'];
+$vnp_Amount = (int)$order['total_amount'];
 $vnp_IpAddr = $_SERVER['REMOTE_ADDR'];
+
+// Persist gateway reference if schema has app_trans_id
+$hasAppTransId = ($conn->query("SHOW COLUMNS FROM orders LIKE 'app_trans_id'")->num_rows > 0);
+if ($hasAppTransId) {
+    $conn->query("UPDATE orders SET app_trans_id='" . $conn->real_escape_string($vnp_TxnRef) . "' WHERE id=$order_id");
+}
 
 // Kiểm tra số tiền
 if ($vnp_Amount <= 0) {

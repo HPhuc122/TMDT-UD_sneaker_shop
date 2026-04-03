@@ -5,10 +5,22 @@ require_once 'includes/header.php';
 $pageTitle = 'Trang chủ';
 
 // Featured products
+// Support both newer schema (stock_quantity) and older schema (quantity)
+$stockFilter = '1=1';
+$hasStockQty = $conn->query("SHOW COLUMNS FROM products LIKE 'stock_quantity'");
+if ($hasStockQty && $hasStockQty->num_rows > 0) {
+    $stockFilter = 'p.stock_quantity > 0';
+} else {
+    $hasQty = $conn->query("SHOW COLUMNS FROM products LIKE 'quantity'");
+    if ($hasQty && $hasQty->num_rows > 0) {
+        $stockFilter = 'p.quantity > 0';
+    }
+}
+
 $sql = "SELECT p.*, c.name as cat_name,
         ROUND(p.import_price * (1 + p.profit_rate/100)) as sell_price
         FROM products p JOIN categories c ON p.category_id = c.id
-        WHERE p.status = 'active' AND p.stock_quantity > 0
+        WHERE p.status = 'active' AND $stockFilter
         ORDER BY p.created_at DESC LIMIT 8";
 $products = $conn->query($sql);
 

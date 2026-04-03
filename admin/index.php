@@ -6,7 +6,7 @@ adminHeader('Dashboard');
 // Stats
 $total_products = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
 $total_orders   = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
-$pending_orders = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
+$pending_orders = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status IN ('pending_payment','awaiting_payment','pending')")->fetch_assoc()['c'];
 $total_revenue  = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status='delivered'")->fetch_assoc()['s'];
 $total_users    = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
@@ -16,8 +16,8 @@ $low_stock = $conn->query("SELECT * FROM products WHERE stock_quantity <= 5 AND 
 // Recent orders
 $recent_orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC LIMIT 8");
 
-$statusColor = ['pending'=>'warning','confirmed'=>'info','delivered'=>'success','cancelled'=>'danger'];
-$statusLabel = ['pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','delivered'=>'Đã giao','cancelled'=>'Đã huỷ'];
+$statusColor = ['pending_payment'=>'secondary','awaiting_payment'=>'secondary','pending'=>'warning','confirmed'=>'info','delivered'=>'success','cancelled'=>'danger'];
+$statusLabel = ['pending_payment'=>'Chờ thanh toán','awaiting_payment'=>'Chờ thanh toán','pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','delivered'=>'Đã giao','cancelled'=>'Đã huỷ'];
 ?>
 
 <div class="row g-4 mb-4">

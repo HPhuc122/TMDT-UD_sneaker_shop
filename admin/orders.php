@@ -9,41 +9,49 @@ $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $id        = (int)$_POST['order_id'];
     $newStatus = sanitize($conn, $_POST['status']);
-    $allowed   = ['pending','confirmed','delivered','cancelled'];
+    $allowed   = ['pending_payment','awaiting_payment','pending','confirmed','delivered','cancelled'];
+    $stockColumn = getStockColumnName($conn) ?: 'stock_quantity';
+    $hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_status'")->num_rows > 0);
 
     if (in_array($newStatus, $allowed)) {
         // Get current status before changing
-        $cur = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
+        $selectCols = $hasPaymentStatusCol ? 'status,payment_status' : 'status';
+        $cur = $conn->query("SELECT $selectCols FROM orders WHERE id=$id")->fetch_assoc();
         $oldStatus = $cur ? $cur['status'] : '';
+        $paymentStatus = ($cur && $hasPaymentStatusCol) ? ($cur['payment_status'] ?? null) : null;
 
-        $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
-
-        // Restore stock if order is being cancelled (and wasn't already cancelled)
-        if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
-            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
-            while ($d = $details->fetch_assoc()) {
-                $pid = (int)$d['product_id'];
-                $qty = (int)$d['quantity'];
-                $conn->query("UPDATE products SET stock_quantity = stock_quantity + $qty WHERE id=$pid");
-            }
-            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã huỷ đơn hàng và hoàn lại tồn kho.</div>';
-        } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
-            // Re-deduct stock if un-cancelling an order
-            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
-            while ($d = $details->fetch_assoc()) {
-                $pid = (int)$d['product_id'];
-                $qty = (int)$d['quantity'];
-                $conn->query("UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $qty) WHERE id=$pid");
-            }
-            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+        if ($newStatus === 'cancelled' && $paymentStatus === 'paid') {
+            $msg = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Không thể hủy đơn đã thanh toán thành công.</div>';
         } else {
-            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+            $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
+
+            // Restore stock if order is being cancelled (and wasn't already cancelled)
+            if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
+                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
+                while ($d = $details->fetch_assoc()) {
+                    $pid = (int)$d['product_id'];
+                    $qty = (int)$d['quantity'];
+                    $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
+                }
+                $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã huỷ đơn hàng và hoàn lại tồn kho.</div>';
+            } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
+                // Re-deduct stock if un-cancelling an order
+                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
+                while ($d = $details->fetch_assoc()) {
+                    $pid = (int)$d['product_id'];
+                    $qty = (int)$d['quantity'];
+                    $conn->query("UPDATE products SET {$stockColumn} = GREATEST(0, {$stockColumn} - $qty) WHERE id=$pid");
+                }
+                $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+            } else {
+                $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+            }
         }
     }
 }
 
-$statusLabels = ['pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','delivered'=>'Đã giao','cancelled'=>'Đã huỷ'];
-$statusColors = ['pending'=>'warning','confirmed'=>'info','delivered'=>'success','cancelled'=>'danger'];
+$statusLabels = ['pending_payment'=>'Chờ thanh toán','awaiting_payment'=>'Chờ thanh toán','pending'=>'Chờ xử lý','confirmed'=>'Đã xác nhận','delivered'=>'Đã giao','cancelled'=>'Đã huỷ'];
+$statusColors = ['pending_payment'=>'secondary','awaiting_payment'=>'secondary','pending'=>'warning','confirmed'=>'info','delivered'=>'success','cancelled'=>'danger'];
 
 // Filters
 $filter_status = isset($_GET['status'])    ? sanitize($conn, $_GET['status']) : '';

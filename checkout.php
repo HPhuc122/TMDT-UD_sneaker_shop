@@ -16,6 +16,13 @@ $error = '';
 $order_done = false;
 $ord = null;
 
+// Compatible status for online unpaid orders across schema versions
+$onlinePendingStatus = getOnlinePendingStatus($conn);
+$stockColumn = getStockColumnName($conn);
+
+$hasPaymentStatusCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_status'")->num_rows > 0);
+$hasPaymentDeadlineCol = ($conn->query("SHOW COLUMNS FROM orders LIKE 'payment_deadline'")->num_rows > 0);
+
 // Handle POST before any output
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $use_saved = isset($_POST['use_saved_address']) && $_POST['use_saved_address'] == '1';
@@ -33,38 +40,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        // Nếu thanh toán trực tuyến (VNPay), lưu thông tin vào session rồi chuyển hướng (không tạo đơn chưa)
+        // Với VNPay: tạo đơn hàng trước để trạng thái luôn được lưu trong DB
         if ($payment === 'online') {
-            $_SESSION['cart_backup'] = $cart;
-            $_SESSION['vnpay_info'] = [
-                'receiver_name'      => $receiver,
-                'receiver_phone'     => $phone,
-                'shipping_address'   => $address,
-                'ward'               => $ward,
-                'district'           => $district,
-                'city'               => $city,
-                'total_amount'       => $total,
-                'notes'              => $notes
-            ];
-            redirect('vnpay/vnpay_create_payment.php');
+            if (!$stockColumn) {
+                $error = 'Không xác định được cột tồn kho sản phẩm.';
+            } else {
+                $order_id = 0;
+                try {
+                    $conn->begin_transaction();
+
+                    $order_code = generateCode('DH');
+                    $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                    $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes, $onlinePendingStatus);
+                    if (!$stmt->execute()) {
+                        throw new Exception('INSERT_ORDER_FAILED');
+                    }
+
+                    $order_id = $conn->insert_id;
+
+                    $setMeta = [];
+                    if ($hasPaymentStatusCol) $setMeta[] = "payment_status='pending'";
+                    if ($hasPaymentDeadlineCol) {
+                        $setMeta[] = "payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                    }
+                    if (!empty($setMeta)) {
+                        if (!$conn->query("UPDATE orders SET " . implode(', ', $setMeta) . " WHERE id=$order_id")) {
+                            throw new Exception('UPDATE_ORDER_META_FAILED');
+                        }
+                    }
+
+                    foreach ($cart as $item) {
+                        $pid   = (int)$item['product_id'];
+                        $qty   = (int)$item['qty'];
+                        $price = (float)$item['price'];
+
+                        if (!$conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)")) {
+                            throw new Exception('INSERT_ORDER_DETAIL_FAILED');
+                        }
+
+                        $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} - $qty WHERE id=$pid AND {$stockColumn} >= $qty");
+                        if ($conn->affected_rows === 0) {
+                            throw new Exception('INSUFFICIENT_STOCK');
+                        }
+                    }
+
+                    $conn->commit();
+
+                    // Giữ giỏ hàng cho đến khi callback xác nhận thành công
+                    $_SESSION['pending_online_order_id'] = $order_id;
+                    redirect('vnpay/vnpay_create_payment.php?order_id=' . $order_id);
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $error = 'Không thể tạo đơn online do tồn kho thay đổi hoặc lỗi hệ thống. Vui lòng thử lại.';
+                }
+            }
         } else {
             // Thanh toán COD hoặc chuyển khoản → tạo đơn hàng ngay
-            $order_code = generateCode('DH');
-            $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
-            if ($stmt->execute()) {
-                $order_id = $conn->insert_id;
-                foreach ($cart as $item) {
-                    $pid   = (int)$item['product_id'];
-                    $qty   = (int)$item['qty'];
-                    $price = (float)$item['price'];
-                    $conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)");
-                    $conn->query("UPDATE products SET stock_quantity = stock_quantity - $qty WHERE id=$pid AND stock_quantity >= $qty");
-                }
-                $_SESSION['cart'] = [];
-                redirect('checkout.php?success=' . $order_id);
+            if (!$stockColumn) {
+                $error = 'Không xác định được cột tồn kho sản phẩm.';
             } else {
-                $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
+                $order_id = 0;
+                try {
+                    $conn->begin_transaction();
+
+                    $order_code = generateCode('DH');
+                    $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                    $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+                    if (!$stmt->execute()) {
+                        throw new Exception('INSERT_ORDER_FAILED');
+                    }
+
+                    $order_id = $conn->insert_id;
+                    foreach ($cart as $item) {
+                        $pid   = (int)$item['product_id'];
+                        $qty   = (int)$item['qty'];
+                        $price = (float)$item['price'];
+
+                        if (!$conn->query("INSERT INTO order_details (order_id,product_id,quantity,unit_price) VALUES ($order_id,$pid,$qty,$price)")) {
+                            throw new Exception('INSERT_ORDER_DETAIL_FAILED');
+                        }
+
+                        $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} - $qty WHERE id=$pid AND {$stockColumn} >= $qty");
+                        if ($conn->affected_rows === 0) {
+                            throw new Exception('INSUFFICIENT_STOCK');
+                        }
+                    }
+
+                    $conn->commit();
+                    $_SESSION['cart'] = [];
+                    redirect('checkout.php?success=' . $order_id);
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $error = 'Không thể tạo đơn hàng do tồn kho thay đổi hoặc lỗi hệ thống. Vui lòng thử lại.';
+                }
             }
         }
     }
