@@ -8,7 +8,8 @@ $total_products    = $conn->query("SELECT COUNT(*) as c FROM products WHERE stat
 $total_orders      = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
 $pending_orders    = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
 $awaiting_orders   = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='awaiting_payment'")->fetch_assoc()['c'];
-$total_revenue     = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status IN ('confirmed','delivered')")->fetch_assoc()['s'];
+// YC5: online tính doanh thu từ confirmed; COD chỉ tính khi delivered
+$total_revenue     = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE (payment_method='online' AND status IN ('confirmed','delivered')) OR (payment_method='cash' AND status='delivered')")->fetch_assoc()['s'];
 $total_users       = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
 // Low stock
@@ -75,7 +76,7 @@ $statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ x
                 <i class="bi bi-currency-dollar fs-2 opacity-75"></i>
                 <div>
                     <div class="fs-4 fw-bold"><?= number_format($total_revenue / 1000000, 1) ?>M</div>
-                    <div class="small opacity-75">Doanh thu (đã giao)</div>
+                    <div class="small opacity-75">Doanh thu</div>
                 </div>
             </div>
         </div>

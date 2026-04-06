@@ -9,56 +9,50 @@ $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $id        = (int)$_POST['order_id'];
     $newStatus = sanitize($conn, $_POST['status']);
-    $allowed   = ['awaiting_payment', 'pending', 'confirmed', 'delivered', 'cancelled'];
+    $allowed   = ['pending', 'confirmed', 'delivered', 'cancelled']; // 'awaiting_payment' bị loại — YC2
 
     if (in_array($newStatus, $allowed)) {
-        $cur       = $conn->query("SELECT status FROM orders WHERE id=$id")->fetch_assoc();
-        $oldStatus = $cur ? $cur['status'] : '';
-        $paymentStatus = ($cur && $hasPaymentStatusCol) ? ($cur['payment_status'] ?? null) : null;
+        $cur           = $conn->query("SELECT status, payment_method FROM orders WHERE id=$id")->fetch_assoc();
+        $oldStatus     = $cur ? $cur['status'] : '';
+        $paymentMethod = $cur ? $cur['payment_method'] : '';
 
-        $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
+        // ── Kiểm tra các ràng buộc chuyển trạng thái ──────────────────────────
+        $ruleError = '';
 
-        if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
-            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
-            while ($d = $details->fetch_assoc()) {
-                $pid = (int)$d['product_id'];
-                $qty = (int)$d['quantity'];
-                $color_id = (int)$_POST['color_id'];
-                $size_id  = (int)$_POST['size_id'];
-                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
-            }
-        } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
-            // Bỏ huỷ đơn → trừ lại tồn kho
-            $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
-            while ($d = $details->fetch_assoc()) {
-                $pid = (int)$d['product_id'];
-                $qty = (int)$d['quantity'];
-                $color_id = (int)$_POST['color_id'];
-                $size_id  = (int)$_POST['size_id'];
-                $conn->query("UPDATE product_varieties SET stock_quantity = GREATEST(0, stock_quantity - $qty) WHERE product_id=$pid AND color_id = $color_id AND size_id = $size_id");
-            }
-            $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
+        // YC2: không được chuyển sang awaiting_payment (đã loại khỏi $allowed, giữ đây để chắc)
+        if ($newStatus === 'awaiting_payment') {
+            $ruleError = 'Không thể chuyển đơn sang trạng thái Chờ thanh toán.';
+        }
+        // YC1: đơn awaiting_payment chỉ được chuyển sang cancelled
+        elseif ($oldStatus === 'awaiting_payment' && $newStatus !== 'cancelled') {
+            $ruleError = 'Đơn đang chờ thanh toán chỉ có thể chuyển sang Đã huỷ.';
+        }
+        // YC4: đơn đã giao không thể đổi sang bất kỳ trạng thái nào
+        elseif ($oldStatus === 'delivered') {
+            $ruleError = 'Đơn đã giao không thể thay đổi trạng thái.';
+        }
+        // YC3: đơn online ở trạng thái confirmed chỉ được chuyển sang delivered
+        elseif ($oldStatus === 'confirmed' && $paymentMethod === 'online' && $newStatus !== 'delivered') {
+            $ruleError = 'Đơn thanh toán online đã xác nhận chỉ có thể chuyển sang Đã giao.';
+        }
+
+        if ($ruleError) {
+            $msg = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>' . $ruleError . '</div>';
         } else {
+            // Thực hiện cập nhật
             $conn->query("UPDATE orders SET status='$newStatus' WHERE id=$id");
 
-            // Restore stock if order is being cancelled (and wasn't already cancelled)
+            // YC: hoàn tồn kho khi huỷ đơn (chưa huỷ trước đó)
             if ($newStatus === 'cancelled' && $oldStatus !== 'cancelled') {
-                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
+                $details = $conn->query("SELECT product_id, color_id, size_id, quantity FROM order_details WHERE order_id=$id");
                 while ($d = $details->fetch_assoc()) {
                     $pid = (int)$d['product_id'];
                     $qty = (int)$d['quantity'];
-                    $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
+                    $cid = (int)$d['color_id'];
+                    $sid = (int)$d['size_id'];
+                    $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND color_id=$cid AND size_id=$sid");
                 }
                 $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã huỷ đơn hàng và hoàn lại tồn kho.</div>';
-            } elseif ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
-                // Re-deduct stock if un-cancelling an order
-                $details = $conn->query("SELECT product_id, quantity FROM order_details WHERE order_id=$id");
-                while ($d = $details->fetch_assoc()) {
-                    $pid = (int)$d['product_id'];
-                    $qty = (int)$d['quantity'];
-                    $conn->query("UPDATE products SET {$stockColumn} = GREATEST(0, {$stockColumn} - $qty) WHERE id=$pid");
-                }
-                $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
             } else {
                 $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã cập nhật trạng thái đơn hàng.</div>';
             }
@@ -172,16 +166,50 @@ if ($detail_id) {
             </table>
 
             <!-- Update status -->
-            <form method="POST" class="d-flex align-items-center gap-3">
+            <?php
+            // Tính danh sách trạng thái được phép chuyển sang (theo 5 quy tắc)
+            $curStatus  = $orderDetail['status'];
+            $curPayment = $orderDetail['payment_method'];
+
+            // YC4: đã giao → không cho đổi gì cả
+            if ($curStatus === 'delivered') {
+                $allowedTransitions = [];
+            }
+            // YC1: chờ thanh toán → chỉ được huỷ
+            elseif ($curStatus === 'awaiting_payment') {
+                $allowedTransitions = ['cancelled'];
+            }
+            // YC3: online + confirmed → chỉ được giao
+            elseif ($curStatus === 'confirmed' && $curPayment === 'online') {
+                $allowedTransitions = ['delivered'];
+            }
+            // YC: đã huỷ → không cho phục hồi (bỏ luồng un-cancel)
+            elseif ($curStatus === 'cancelled') {
+                $allowedTransitions = [];
+            }
+            // COD confirmed, pending → các trạng thái hợp lý (không bao gồm awaiting_payment — YC2)
+            else {
+                $allStatuses = ['pending', 'confirmed', 'delivered', 'cancelled'];
+                $allowedTransitions = array_filter($allStatuses, fn($s) => $s !== $curStatus);
+            }
+            ?>
+            <?php if (empty($allowedTransitions)): ?>
+                <div class="alert alert-secondary d-inline-flex align-items-center gap-2 mb-0">
+                    <i class="bi bi-lock-fill"></i>
+                    Đơn hàng này không thể thay đổi trạng thái.
+                </div>
+            <?php else: ?>
+            <form method="POST" class="d-flex align-items-center gap-3 flex-wrap">
                 <input type="hidden" name="order_id" value="<?= $orderDetail['id'] ?>">
                 <label class="fw-semibold">Cập nhật trạng thái:</label>
-                <select name="status" class="form-select" style="width:200px">
-                    <?php foreach ($statusLabels as $k => $v): ?>
-                        <option value="<?= $k ?>" <?= $orderDetail['status'] == $k ? 'selected' : '' ?>><?= $v ?></option>
+                <select name="status" class="form-select" style="width:220px">
+                    <?php foreach ($allowedTransitions as $k): ?>
+                        <option value="<?= $k ?>"><?= $statusLabels[$k] ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" name="update_status" class="btn btn-primary">Cập nhật</button>
             </form>
+            <?php endif; ?>
         </div>
     </div>
 
