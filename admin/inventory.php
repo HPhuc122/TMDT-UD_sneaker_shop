@@ -24,30 +24,24 @@ $stock_count_sql = "SELECT COUNT(*) as c FROM products p
 $total_stock = $conn->query($stock_count_sql)->fetch_assoc()['c'];
 $offset_stock = ($page_stock - 1) * $per_page;
 
-$stock_sql = "SELECT p.id, p.code, p.name, c.name as cat_name, pv.color_id, pv.size_id, pv.stock_quantity, pv.import_price,
-    ROUND(pv.import_price*(1+p.profit_rate/100)) as sell_price,
-    COALESCE((
-        SELECT SUM(id2.quantity) 
-        FROM import_details id2
-        JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
-        WHERE id2.product_id = p.id 
-          AND id2.color_id = pv.color_id
-          AND id2.size_id = pv.size_id
-          AND ir2.status='completed'
-    ), 0) as total_imported_all,
-    COALESCE((
-        SELECT SUM(id2.quantity) 
-        FROM import_details id2
-        JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
-        WHERE id2.product_id = p.id 
-          AND id2.color_id = pv.color_id
-          AND id2.size_id = pv.size_id
-          AND ir2.status='completed'
-          AND ir2.import_date > '$stock_date'
-    ), 0) as imported_after
-FROM products p 
-JOIN categories c ON p.category_id=c.id
-JOIN product_varieties pv ON pv.product_id = p.id
+$stock_sql = "SELECT p.id, p.code, p.name, c.name as cat_name, (SELECT SUM(pv.stock_quantity) 
+                                                                FROM product_varieties pv 
+                                                                WHERE pv.product_id = p.id) as stock_quantity,
+    p.import_price, p.profit_rate,
+    ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price,
+    COALESCE((SELECT SUM(id2.quantity) FROM import_details id2
+              JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
+              WHERE id2.product_id=p.id AND ir2.status='completed'), 0) as total_imported_all,
+    COALESCE((SELECT SUM(id2.quantity) FROM import_details id2
+              JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
+              WHERE id2.product_id=p.id AND ir2.status='completed' AND ir2.import_date > '$stock_date'), 0) as imported_after,
+    COALESCE((SELECT SUM(od.quantity) FROM order_details od
+              JOIN orders o ON od.order_id=o.id
+              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled')), 0) as total_sold_all,
+    COALESCE((SELECT SUM(od.quantity) FROM order_details od
+              JOIN orders o ON od.order_id=o.id
+              WHERE od.product_id=p.id AND o.status NOT IN ('cancelled') AND DATE(o.created_at) > '$stock_date'), 0) as sold_after
+FROM products p JOIN categories c ON p.category_id=c.id
 WHERE p.status='active' $where_cat
 ORDER BY p.name
 LIMIT $per_page OFFSET $offset_stock";
@@ -57,52 +51,6 @@ $stocks = $conn->query($stock_sql);
 $ord_from = isset($_GET['ord_from']) ? sanitize($conn, $_GET['ord_from']) : date('Y-m-01');
 $ord_to   = isset($_GET['ord_to'])   ? sanitize($conn, $_GET['ord_to'])   : date('Y-m-d');
 
-$report = $conn->query("SELECT 
-    p.code, p.name, c.name as cat_name,
-    pv.color_id,
-    pv.size_id,
-
-    COALESCE((
-        SELECT SUM(id2.quantity) 
-        FROM import_details id2 
-        JOIN import_receipts ir2 ON id2.receipt_id=ir2.id
-        WHERE id2.product_id=p.id 
-          AND id2.color_id = pv.color_id
-          AND id2.size_id = pv.size_id
-          AND ir2.status='completed'
-          AND ir2.import_date BETWEEN '$rep_from' AND '$rep_to'
-    ), 0) as qty_imported,
-
-    COALESCE((
-        SELECT SUM(od.quantity) 
-        FROM order_details od 
-        JOIN orders o ON od.order_id=o.id
-        WHERE od.product_id=p.id 
-          AND od.color_id = pv.color_id
-          AND od.size_id = pv.size_id
-          AND o.status IN ('pending','confirmed','delivered')
-          AND DATE(o.created_at) BETWEEN '$rep_from' AND '$rep_to'
-    ), 0) as qty_sold,
-
-    pv.stock_quantity,
-
-    COALESCE((
-        SELECT SUM(od2.quantity) 
-        FROM order_details od2 
-        JOIN orders o2 ON od2.order_id=o2.id
-        WHERE od2.product_id=p.id 
-          AND od2.color_id = pv.color_id
-          AND od2.size_id = pv.size_id
-          AND o2.status IN ('pending','confirmed','delivered')
-    ), 0) as total_sold_ever
-
-FROM products p 
-JOIN categories c ON p.category_id=c.id
-JOIN product_varieties pv ON pv.product_id = p.id
-
-WHERE p.status='active'
-ORDER BY qty_sold DESC, p.name
-LIMIT $per_page OFFSET $offset_rep;");
 $ord_stats = $conn->query("SELECT
     COUNT(*) as tong_don,
     SUM(CASE WHEN status IN ('confirmed','delivered') THEN 1 ELSE 0 END) as thanh_cong,
