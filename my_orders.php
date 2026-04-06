@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
     } else {
         if ($action === 'pay_now') {
             if ($order['payment_method'] !== 'online') {
-                $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
+                $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "', app_trans_id=NULL";
                 if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
                 if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
                 $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
@@ -62,6 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
                 if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
                 if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
                 $conn->query("UPDATE orders SET $setSql WHERE id=$orderId");
+            }
+            // Phân biệt gateway dựa vào app_trans_id
+            $fresh = $conn->query("SELECT app_trans_id FROM orders WHERE id=$orderId")->fetch_assoc();
+            if (!empty($fresh['app_trans_id'])) {
+                redirect('zalo_pay/zalopay_create.php?order_id=' . $orderId);
             }
             redirect('vnpay/vnpay_create_payment.php?order_id=' . $orderId);
         }
@@ -161,7 +166,12 @@ if ($detail_id > 0) {
                         <?php if (isPendingPaymentOrderStatus($conn, $orderDetail['status'])): ?>
                         <div class="mt-3 d-flex gap-2 flex-wrap">
                             <?php if ($orderDetail['payment_method'] === 'online'): ?>
-                            <a href="checkout.php?repay=<?= (int)$orderDetail['id'] ?>&action=pay" class="btn btn-primary btn-sm">
+                            <?php
+                            $payUrl = !empty($orderDetail['app_trans_id'])
+                                ? 'zalo_pay/zalopay_create.php?order_id=' . (int)$orderDetail['id']
+                                : 'checkout.php?repay=' . (int)$orderDetail['id'] . '&action=pay';
+                            ?>
+                            <a href="<?= $payUrl ?>" class="btn btn-primary btn-sm">
                                 <i class="bi bi-credit-card me-2"></i>Thanh toán
                             </a>
                             <?php endif; ?>
@@ -249,7 +259,12 @@ if ($detail_id > 0) {
                                                 <i class="bi bi-eye"></i>
                                             </a>
                                             <?php if (isPendingPaymentOrderStatus($conn, $ord['status']) && $ord['payment_method'] === 'online'): ?>
-                                                <a href="checkout.php?repay=<?= (int)$ord['id'] ?>&action=pay" class="btn btn-sm btn-primary">
+                                                <?php
+                                                $payUrl = !empty($ord['app_trans_id'])
+                                                    ? 'zalo_pay/zalopay_create.php?order_id=' . (int)$ord['id']
+                                                    : 'checkout.php?repay=' . (int)$ord['id'] . '&action=pay';
+                                                ?>
+                                                <a href="<?= $payUrl ?>" class="btn btn-sm btn-primary">
                                                     <i class="bi bi-credit-card"></i>
                                                 </a>
                                             <?php else: ?>

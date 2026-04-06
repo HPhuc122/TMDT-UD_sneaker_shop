@@ -31,12 +31,6 @@ $vnp_OrderInfo = "Thanh toan don hang " . $order['order_code'];
 $vnp_Amount = (int)$order['total_amount'];
 $vnp_IpAddr = $_SERVER['REMOTE_ADDR'];
 
-// Persist gateway reference if schema has app_trans_id
-$hasAppTransId = ($conn->query("SHOW COLUMNS FROM orders LIKE 'app_trans_id'")->num_rows > 0);
-if ($hasAppTransId) {
-    $conn->query("UPDATE orders SET app_trans_id='" . $conn->real_escape_string($vnp_TxnRef) . "' WHERE id=$order_id");
-}
-
 // Kiểm tra số tiền
 if ($vnp_Amount <= 0) {
     die("Số tiền không hợp lệ");

@@ -23,6 +23,11 @@ if (isset($_GET['repay'])) {
 
     if ($repay_action === 'pay') {
         if ($repay_order['payment_method'] === 'online') {
+            if (!empty($repay_order['app_trans_id'])) {
+                redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
+            }
+            // VNPay: xóa app_trans_id cũ để tránh nhận nhầm gateway sau này
+            $conn->query("UPDATE orders SET app_trans_id=NULL WHERE id=$repay_id");
             redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
         }
 
@@ -47,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
         $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
         if ($hasPaymentStatusCol) $setSql .= ", payment_status='pending'";
         if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+        if ($online_sub === 'vnpay') $setSql .= ", app_trans_id=NULL"; // xóa app_trans_id cũ của ZaloPay
         $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
         if ($online_sub === 'zalopay') {
             redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);

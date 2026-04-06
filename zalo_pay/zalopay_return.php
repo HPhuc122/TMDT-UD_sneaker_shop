@@ -108,8 +108,8 @@ require_once '../includes/header.php';
       </div>
 
       <div class="mt-4 d-flex gap-2 justify-content-center">
-        <a href="my_orders.php" class="btn btn-primary"><i class="bi bi-bag-check me-2"></i>Xem đơn hàng</a>
-        <a href="index.php" class="btn btn-outline-secondary"><i class="bi bi-house me-2"></i>Trang chủ</a>
+        <a href="<?= APP_URL . APP_PATH . '/../my_orders.php' ?>" class="btn btn-primary"><i class="bi bi-bag-check me-2"></i>Xem đơn hàng</a>
+        <a href="<?= APP_URL . APP_PATH . '/../index.php' ?>" class="btn btn-outline-secondary"><i class="bi bi-house me-2"></i>Trang chủ</a>
       </div>
     </div>
   </div>
@@ -125,15 +125,15 @@ require_once '../includes/header.php';
       <?php if ($order): ?>
       <p class="mb-4">Mã đơn: <strong style="color:#ff6b35"><?= htmlspecialchars($order['order_code']) ?></strong></p>
       <div class="d-flex gap-2 justify-content-center">
-        <a href="checkout.php?repay=<?= $order['id'] ?>" class="btn btn-outline-secondary">
+        <a href="<?= APP_URL . APP_PATH . '/../checkout.php?repay=' . $order['id'] ?>" class="btn btn-outline-secondary">
           <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
         </a>
-        <a href="zalopay_create.php?order_id=<?= $order['id'] ?>" class="btn btn-primary" style="background:#0068ff;border-color:#0068ff">
+        <a href="<?= APP_URL . APP_PATH . '/zalopay_create.php?order_id=' . $order['id'] ?>" class="btn btn-primary" style="background:#0068ff;border-color:#0068ff">
           <i class="bi bi-phone me-2"></i>Thanh toán lại qua ZaloPay
         </a>
       </div>
       <?php else: ?>
-      <a href="cart.php" class="btn btn-primary"><i class="bi bi-cart3 me-2"></i>Quay lại giỏ hàng</a>
+      <a href="<?= APP_URL . APP_PATH . '/../cart.php' ?>" class="btn btn-primary"><i class="bi bi-cart3 me-2"></i>Quay lại giỏ hàng</a>
       <?php endif; ?>
     </div>
   </div>
