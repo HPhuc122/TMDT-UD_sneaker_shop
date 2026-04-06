@@ -599,3 +599,42 @@ ALTER TABLE `orders`
 -- Index để tìm nhanh theo app_trans_id trong callback
 ALTER TABLE `orders`
   ADD INDEX `idx_app_trans_id` (`app_trans_id`);
+
+-- Bổ xung thuộc tính màu + size cho import_details
+ALTER TABLE `import_details`
+ADD COLUMN `color_id` INT(11),
+ADD COLUMN `size_id` INT(11);
+
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=1;  -- product 1
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=2;  -- product 2
+UPDATE import_details SET size_id=1, color_id=7 WHERE id=3;  -- product 3
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=4;  -- product 6
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=5;  -- product 7
+
+UPDATE import_details SET size_id=1, color_id=3 WHERE id=6;  -- product 11
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=7;  -- product 12
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=8;  -- product 13
+UPDATE import_details SET size_id=1, color_id=7 WHERE id=9;  -- product 14
+UPDATE import_details SET size_id=1, color_id=7 WHERE id=10; -- product 15
+
+UPDATE import_details SET size_id=1, color_id=4 WHERE id=11; -- product 4
+UPDATE import_details SET size_id=1, color_id=3 WHERE id=12; -- product 5
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=13; -- product 16
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=14; -- product 17
+
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=15; -- product 8
+UPDATE import_details SET size_id=1, color_id=4 WHERE id=16; -- product 9
+UPDATE import_details SET size_id=1, color_id=2 WHERE id=17; -- product 10
+UPDATE import_details SET size_id=1, color_id=3 WHERE id=18; -- product 18
+UPDATE import_details SET size_id=1, color_id=4 WHERE id=19; -- product 19
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=20; -- product 20
+
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=21; -- product 1
+UPDATE import_details SET size_id=1, color_id=1 WHERE id=22; -- product 6
+
+ALTER TABLE import_details
+ADD CONSTRAINT fk_import_size 
+    FOREIGN KEY (size_id) REFERENCES sizes(id),
+
+ADD CONSTRAINT fk_import_color 
+    FOREIGN KEY (color_id) REFERENCES colors(id);
