@@ -160,7 +160,8 @@ CREATE TABLE `orders` (
   `city` varchar(100) DEFAULT NULL,
   `payment_method` enum('cash','transfer','online') DEFAULT 'cash',
   `total_amount` decimal(15,2) DEFAULT 0.00,
-  `status` enum('pending','confirmed','delivered','cancelled') DEFAULT 'pending',
+  `status` enum('awaiting_payment','pending','confirmed','delivered','cancelled') DEFAULT 'pending',
+  `payment_status` enum('pending','paid') DEFAULT 'pending',
   `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -579,3 +580,22 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+
+--backup
+ALTER TABLE `orders`
+  ADD COLUMN `payment_status` ENUM('pending','paid','failed') DEFAULT NULL
+      COMMENT 'Trạng thái thanh toán ZaloPay' AFTER `status`,
+  ADD COLUMN `app_trans_id` VARCHAR(100) DEFAULT NULL
+      COMMENT 'Mã giao dịch gửi lên ZaloPay (để đối chiếu callback)' AFTER `payment_status`,
+  ADD COLUMN `zp_trans_id` VARCHAR(100) DEFAULT NULL
+      COMMENT 'Mã giao dịch ZaloPay trả về sau khi thanh toán thành công' AFTER `app_trans_id`;
+
+ALTER TABLE `orders`
+  MODIFY COLUMN `status`
+    ENUM('awaiting_payment','pending','confirmed','delivered','cancelled')
+    DEFAULT 'pending';
+
+-- Index để tìm nhanh theo app_trans_id trong callback
+ALTER TABLE `orders`
+  ADD INDEX `idx_app_trans_id` (`app_trans_id`);

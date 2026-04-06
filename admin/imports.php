@@ -14,17 +14,25 @@ if (isset($_GET['complete'])) {
         $details = $conn->query("SELECT * FROM import_details WHERE receipt_id=$id");
         while ($d = $details->fetch_assoc()) {
             $pid = $d['product_id'];
-            $p = $conn->query("SELECT import_price,(SELECT SUM(pv.stock_quantity)
+            $size_id   =  $d['size_id'];
+            $color_id   =  $d['color_id'];
+            $pv = $conn->query("SELECT import_price,(SELECT SUM(pv.stock_quantity)
                                                     FROM product_varieties pv
                                                     WHERE pv.product_id = products.id) AS stock_quantity
                                 FROM products
                                 WHERE id=$pid")->fetch_assoc();
-            $old_qty   = $p['stock_quantity'];
-            $old_price = $p['import_price'];
+            $old_qty   = $pv['stock_quantity'];
+            $old_price = $pv['import_price'];
             $new_qty   = $d['quantity'];
             $new_price = $d['import_price'];
             $avg_price = ($old_qty + $new_qty) > 0 ? ($old_qty * $old_price + $new_qty * $new_price) / ($old_qty + $new_qty) : $new_price;
-            $conn->query("UPDATE products SET stock_quantity=stock_quantity+$new_qty, import_price=$avg_price WHERE id=$pid");
+            $result = $conn->query("SELECT * FROM product_varieties WHERE id = $pid AND color_id = $color_id AND size_id = $size_id");
+
+            if ($result->num_rows > 0) {
+                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $new_qty, import_price = $avg_price WHERE id = $pid AND color_id = $color_id AND size_id = $size_id");
+            } else {
+                $conn->query("INSERT INTO product_varieties (id, color_id, size_id, stock_quantity, import_price) VALUES ($pid, $color_id, $size_id, $new_qty, $avg_price)");
+            }
         }
         $conn->query("UPDATE import_receipts SET status='completed' WHERE id=$id");
         $msg = '<div class="alert alert-success">Phiếu nhập đã được hoàn thành. Tồn kho đã được cập nhật.</div>';
@@ -64,9 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Check if product already in receipt, update qty
             $existing = $conn->query("SELECT id FROM import_details WHERE receipt_id=$rid AND product_id=$pid")->fetch_assoc();
             if ($existing) {
-                $conn->query("UPDATE import_details SET quantity=quantity+$qty, import_price=$price WHERE receipt_id=$rid AND product_id=$pid");
+                $conn->query("UPDATE import_details SET quantity=quantity+$qty, import_price=$price WHERE receipt_id=$rid AND product_id=$pid and size_id = $size_id and color_id = $color_id");
             } else {
-                $conn->query("INSERT INTO import_details (receipt_id,product_id,quantity,import_price) VALUES ($rid,$pid,$qty,$price)");
+                $conn->query("INSERT INTO import_details (receipt_id,product_id,quantity,import_price,color_id,size_id) VALUES ($rid,$pid,$qty,$price,$color_id,$size_id)");
             }
             $msg = '<div class="alert alert-success">Đã thêm sản phẩm vào phiếu nhập.</div>';
         }

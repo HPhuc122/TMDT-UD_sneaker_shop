@@ -1,78 +1,202 @@
 <?php
-// checkout.php - ALL logic BEFORE header.php to prevent "headers already sent"
+// checkout.php
 require_once 'includes/db.php';
 if (!isLoggedIn()) redirect('login.php?redirect=checkout.php');
 
-$cart = $_SESSION['cart'] ?? [];
-if (empty($cart) && !isset($_GET['success'])) redirect('cart.php');
-
 $user_id = $_SESSION['user_id'];
-$user = $conn->query("SELECT * FROM users WHERE id=$user_id")->fetch_assoc();
+$user    = $conn->query("SELECT * FROM users WHERE id=$user_id")->fetch_assoc();
+$hasPaymentStatusCol   = hasTableColumn($conn, 'orders', 'payment_status');
+$hasPaymentDeadlineCol = hasTableColumn($conn, 'orders', 'payment_deadline');
+
+// ══════════════════════════════════════════════════════════════════
+// REPAY FLOW — Đổi phương thức / thanh toán lại đơn awaiting_payment
+// ══════════════════════════════════════════════════════════════════
+$repay_order  = null;
+$repay_action = sanitize($conn, $_GET['action'] ?? 'change');
+
+if (isset($_GET['repay'])) {
+    $repay_id    = (int)$_GET['repay'];
+    $repay_order = $conn->query("SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id")->fetch_assoc();
+    if ($repay_order && !isPendingPaymentOrderStatus($conn, $repay_order['status'])) {
+        $repay_order = null;
+    }
+    if (!$repay_order) redirect('my_orders.php');
+
+    if ($repay_action === 'pay') {
+        if ($repay_order['payment_method'] === 'online') {
+            if (!empty($repay_order['app_trans_id'])) {
+                redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
+            }
+            $conn->query("UPDATE orders SET app_trans_id=NULL WHERE id=$repay_id");
+            redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
+        }
+        $repay_action = 'change';
+    }
+}
+
+// POST: xử lý repay (đổi phương thức hoặc thanh toán lại online)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
+    $repay_id  = (int)$_POST['repay_order_id'];
+    $repay_ord = $conn->query("SELECT * FROM orders WHERE id=$repay_id AND user_id=$user_id")->fetch_assoc();
+    if ($repay_ord && !isPendingPaymentOrderStatus($conn, $repay_ord['status'])) {
+        $repay_ord = null;
+    }
+    if (!$repay_ord) redirect('my_orders.php');
+
+    $payment    = sanitize($conn, $_POST['payment_method'] ?? 'cash');
+    $online_sub = sanitize($conn, $_POST['online_sub']     ?? 'vnpay');
+
+    if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
+        $setSql = "payment_method='online', status='" . $conn->real_escape_string(getOnlinePendingStatus($conn)) . "'";
+        if ($hasPaymentStatusCol)   $setSql .= ", payment_status='pending'";
+        if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+        if ($online_sub === 'vnpay') $setSql .= ", app_trans_id=NULL";
+        $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
+        if ($online_sub === 'zalopay') {
+            redirect('zalo_pay/zalopay_create.php?order_id=' . $repay_id);
+        }
+        redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
+    } else {
+        // COD hoặc chuyển khoản: tồn kho đã giữ sẵn từ lúc tạo đơn online
+        $pm_safe = $conn->real_escape_string($payment);
+        $setSql  = "payment_method='$pm_safe', status='pending'";
+        if ($hasPaymentStatusCol)   $setSql .= ", payment_status=NULL";
+        if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
+        $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
+        $_SESSION['cart'] = [];
+        redirect('checkout.php?success=' . $repay_id);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NORMAL CHECKOUT FLOW
+// ══════════════════════════════════════════════════════════════════
+$cart = $_SESSION['cart'] ?? [];
+if (empty($cart) && !isset($_GET['success']) && !$repay_order) redirect('cart.php');
 
 $total = 0;
 foreach ($cart as $item) $total += $item['price'] * $item['qty'];
 
-$error = '';
+$error      = '';
 $order_done = false;
-$ord = null;
+$ord        = null;
 
-// Handle POST before any output
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $use_saved = isset($_POST['use_saved_address']) && $_POST['use_saved_address'] == '1';
-    $receiver  = sanitize($conn, $_POST['receiver_name'] ?? '');
-    $phone     = sanitize($conn, $_POST['receiver_phone'] ?? '');
-    $address   = $use_saved ? $user['address']  : sanitize($conn, $_POST['shipping_address'] ?? '');
-    $ward      = $use_saved ? $user['ward']      : sanitize($conn, $_POST['ward'] ?? '');
-    $district  = $use_saved ? $user['district']  : sanitize($conn, $_POST['district'] ?? '');
-    $city      = $use_saved ? $user['city']      : sanitize($conn, $_POST['city'] ?? '');
-    $payment   = sanitize($conn, $_POST['payment_method'] ?? 'cash');
-    $notes     = sanitize($conn, $_POST['notes'] ?? '');
+// POST: tạo đơn mới
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
+    $use_saved  = isset($_POST['use_saved_address']) && $_POST['use_saved_address'] == '1';
+    $receiver   = sanitize($conn, $_POST['receiver_name']    ?? '');
+    $phone      = sanitize($conn, $_POST['receiver_phone']   ?? '');
+    $address    = $use_saved ? $user['address']  : sanitize($conn, $_POST['shipping_address'] ?? '');
+    $ward       = $use_saved ? $user['ward']      : sanitize($conn, $_POST['ward']             ?? '');
+    $district   = $use_saved ? $user['district']  : sanitize($conn, $_POST['district']         ?? '');
+    $city       = $use_saved ? $user['city']      : sanitize($conn, $_POST['city']             ?? '');
+    $payment    = sanitize($conn, $_POST['payment_method'] ?? 'cash');
+    $online_sub = sanitize($conn, $_POST['online_sub']     ?? 'vnpay');
+    $notes      = sanitize($conn, $_POST['notes']          ?? '');
 
     if (!$receiver || !$phone || !$address || !$ward || !$district || !$city) {
         $error = 'Vui lòng điền đầy đủ thông tin giao hàng.';
     } elseif (!preg_match('/^0[0-9]{9,10}$/', $phone)) {
         $error = 'Số điện thoại không hợp lệ. Phải bắt đầu bằng số 0 và có 10-11 chữ số.';
     } else {
-        $order_code = generateCode('DH');
-        $conn->begin_transaction();
-        $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
 
+        // ── ONLINE (VNPay / ZaloPay) ──────────────────────────────────
+        if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
+            $conn->begin_transaction();
             try {
+                $order_code = generateCode('DH');
+                $status     = getOnlinePendingStatus($conn);
+
+                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $status, $notes);
+                $stmt->execute();
+                $order_id = $conn->insert_id;
+
+                $setSql = "status='" . $conn->real_escape_string($status) . "'";
+                if ($hasPaymentStatusCol)   $setSql .= ", payment_status='pending'";
+                if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=DATE_ADD(created_at, INTERVAL 24 HOUR)";
+                $conn->query("UPDATE orders SET $setSql WHERE id=$order_id");
+
+                $detailStmt      = $conn->prepare("INSERT INTO order_details (order_id,product_id,quantity,unit_price,size_id,color_id) VALUES (?,?,?,?,?,?)");
+                $stockStmt       = $conn->prepare("SELECT stock_quantity FROM product_varieties WHERE product_id=? AND size_id=? AND color_id=? FOR UPDATE");
+                $updateStockStmt = $conn->prepare("UPDATE product_varieties SET stock_quantity = stock_quantity - ? WHERE product_id=? AND size_id=? AND color_id=? AND stock_quantity >= ?");
+
                 foreach ($cart as $item) {
-
-                    $pid   = (int)$item['product_id'];
-                    $size  = (int)$item['size_id'];
-                    $color = (int)$item['color_id'];
-                    $qty   = (int)$item['qty'];
-                    $price = (float)$item['price'];
-
-                    //CHECK STOCK
-                    $stmt = $conn->prepare("SELECT stock_quantity 
-                                            FROM product_varieties 
-                                            WHERE product_id=? AND size_id=? AND color_id=?
-                                            FOR UPDATE");
-                    $stmt->bind_param("iii", $pid, $size, $color);
-                    $stmt->execute();
-                    $stock = $stmt->get_result()->fetch_assoc();
-
-                    if (!$stock || $stock['stock_quantity'] < $qty) {
-                        throw new Exception("Sản phẩm không đủ hàng!");
+                    $pid   = (int)($item['product_id'] ?? 0);
+                    $size  = (int)($item['size_id']    ?? 0);
+                    $color = (int)($item['color_id']   ?? 0);
+                    $qty   = (int)($item['qty']         ?? 0);
+                    $price = (float)($item['price']     ?? 0);
+                    if ($pid <= 0 || $size <= 0 || $color <= 0 || $qty <= 0) {
+                        throw new Exception('Dữ liệu giỏ hàng không hợp lệ.');
                     }
-                    //INSERT ORDER DETAIL
-                    $stmt = $conn->prepare("INSERT INTO order_details (order_id, product_id, size_id, color_id, quantity, unit_price) 
-                                            VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("iiiiid", $order_id, $pid, $size, $color, $qty, $price);
-                    $stmt->execute();
 
-                    //TRỪ KHO
-                    $stmt = $conn->prepare("UPDATE product_varieties 
-                                            SET stock_quantity = stock_quantity - ? 
-                                            WHERE product_id=? AND size_id=? AND color_id=?");
-                    $stmt->bind_param("iiii", $qty, $pid, $size, $color);
-                    $stmt->execute();
+                    $stockStmt->bind_param('iii', $pid, $size, $color);
+                    $stockStmt->execute();
+                    $stockRow = $stockStmt->get_result()->fetch_assoc();
+                    if (!$stockRow || (int)$stockRow['stock_quantity'] < $qty) {
+                        throw new Exception('Sản phẩm không đủ tồn kho để giữ đơn trong 24 giờ.');
+                    }
+
+                    $updateStockStmt->bind_param('iiiii', $qty, $pid, $size, $color, $qty);
+                    $updateStockStmt->execute();
+                    if ($updateStockStmt->affected_rows !== 1) {
+                        throw new Exception('Không thể giữ tồn kho do cạnh tranh dữ liệu.');
+                    }
+
+                    $detailStmt->bind_param('iiidii', $order_id, $pid, $qty, $price, $size, $color);
+                    $detailStmt->execute();
+                }
+
+                $conn->commit();
+                $_SESSION['cart'] = [];
+                if ($online_sub === 'zalopay') {
+                    redirect('zalo_pay/zalopay_create.php?order_id=' . $order_id);
+                }
+                redirect('vnpay/vnpay_create_payment.php?order_id=' . $order_id);
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = $e->getMessage();
+            }
+        } else {
+            // ── COD / Chuyển khoản — dùng transaction + stock check chuẩn ──
+            $conn->begin_transaction();
+            try {
+                $order_code = generateCode('DH');
+                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+                if (!$stmt->execute()) {
+                    throw new Exception('Có lỗi khi tạo đơn hàng. Vui lòng thử lại.');
+                }
+                $order_id = $conn->insert_id;
+
+                $detailStmt      = $conn->prepare("INSERT INTO order_details (order_id,product_id,size_id,color_id,quantity,unit_price) VALUES (?,?,?,?,?,?)");
+                $stockStmt       = $conn->prepare("SELECT stock_quantity FROM product_varieties WHERE product_id=? AND size_id=? AND color_id=? FOR UPDATE");
+                $updateStockStmt = $conn->prepare("UPDATE product_varieties SET stock_quantity = stock_quantity - ? WHERE product_id=? AND size_id=? AND color_id=?");
+
+                foreach ($cart as $item) {
+                    $pid   = (int)($item['product_id'] ?? 0);
+                    $size  = (int)($item['size_id']    ?? 0);
+                    $color = (int)($item['color_id']   ?? 0);
+                    $qty   = (int)($item['qty']         ?? 0);
+                    $price = (float)($item['price']     ?? 0);
+                    if ($pid <= 0 || $size <= 0 || $color <= 0 || $qty <= 0) {
+                        throw new Exception('Dữ liệu giỏ hàng không hợp lệ.');
+                    }
+
+                    // Kiểm tra tồn kho (FOR UPDATE để lock row)
+                    $stockStmt->bind_param('iii', $pid, $size, $color);
+                    $stockStmt->execute();
+                    $stockRow = $stockStmt->get_result()->fetch_assoc();
+                    if (!$stockRow || (int)$stockRow['stock_quantity'] < $qty) {
+                        throw new Exception('Sản phẩm không đủ hàng!');
+                    }
+
+                    $detailStmt->bind_param('iiiiid', $order_id, $pid, $size, $color, $qty, $price);
+                    $detailStmt->execute();
+
+                    $updateStockStmt->bind_param('iiii', $qty, $pid, $size, $color);
+                    $updateStockStmt->execute();
                 }
 
                 $conn->commit();
@@ -82,9 +206,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->rollback();
                 $error = $e->getMessage();
             }
-        } else {
-            $conn->rollback();
-            $error = 'Có lỗi khi tạo đơn hàng. Vui lòng thử lại.';
         }
     }
 }
@@ -96,13 +217,17 @@ if (isset($_GET['success'])) {
     if ($ord) $order_done = true;
 }
 
-$pageTitle = $order_done ? 'Đặt hàng thành công' : 'Thanh toán';
+$pageTitle = $order_done ? 'Đặt hàng thành công' : ($repay_order ? 'Thanh toán đơn hàng' : 'Thanh toán');
 require_once 'includes/header.php';
 ?>
+
 <div class="container my-4">
-    <h3 class="section-title mb-4"><?= $order_done ? 'Xác nhận đơn hàng' : 'Thanh Toán' ?></h3>
+    <h3 class="section-title mb-4">
+        <?= $order_done ? 'Xác nhận đơn hàng' : ($repay_order ? 'Thanh toán đơn ' . htmlspecialchars($repay_order['order_code']) : 'Thanh Toán') ?>
+    </h3>
 
     <?php if ($order_done): ?>
+        <!-- ✅ THÀNH CÔNG -->
         <div class="card border-0 shadow-sm">
             <div class="card-body text-center py-5">
                 <i class="bi bi-check-circle-fill" style="font-size:5rem;color:#28a745"></i>
@@ -130,7 +255,7 @@ require_once 'includes/header.php';
                             <p class="mb-1"><i class="bi bi-person me-1"></i><?= htmlspecialchars($ord['receiver_name']) ?> · <?= htmlspecialchars($ord['receiver_phone']) ?></p>
                             <p class="mb-1"><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($ord['shipping_address'] . ', ' . $ord['ward'] . ', ' . $ord['district'] . ', ' . $ord['city']) ?></p>
                             <?php $pm = ['cash' => 'Tiền mặt (COD)', 'transfer' => 'Chuyển khoản', 'online' => 'Trực tuyến']; ?>
-                            <p class="mb-0"><i class="bi bi-credit-card me-1"></i><?= $pm[$ord['payment_method']] ?></p>
+                            <p class="mb-0"><i class="bi bi-credit-card me-1"></i><?= $pm[$ord['payment_method']] ?? $ord['payment_method'] ?></p>
                             <?php if ($ord['payment_method'] === 'transfer'): ?>
                                 <div class="alert alert-info mt-2 py-2 small mb-0">
                                     <strong>Chuyển khoản:</strong> Vietcombank · STK: 1234567890 · Chủ TK: SNEAKER SHOP<br>
@@ -147,10 +272,124 @@ require_once 'includes/header.php';
             </div>
         </div>
 
-    <?php else: ?>
+    <?php elseif ($repay_order && $repay_action === 'change'): ?>
+        <!-- 🔄 REPAY FORM — Đổi phương thức / Thanh toán lại -->
         <?php if ($error): ?>
             <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i><?= $error ?></div>
         <?php endif; ?>
+
+        <form method="POST">
+            <input type="hidden" name="repay_order_id" value="<?= $repay_order['id'] ?>">
+            <div class="row g-4">
+                <div class="col-lg-7">
+                    <!-- Thông tin giao hàng (chỉ đọc) -->
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-header fw-bold bg-white border-0"><i class="bi bi-truck me-2"></i>Thông tin giao hàng</div>
+                        <div class="card-body">
+                            <div class="p-3 bg-light rounded">
+                                <p class="mb-1"><i class="bi bi-person me-2"></i><strong><?= htmlspecialchars($repay_order['receiver_name']) ?></strong> · <?= htmlspecialchars($repay_order['receiver_phone']) ?></p>
+                                <p class="mb-0"><i class="bi bi-geo-alt me-2"></i><?= htmlspecialchars($repay_order['shipping_address'] . ', ' . $repay_order['ward'] . ', ' . $repay_order['district'] . ', ' . $repay_order['city']) ?></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phương thức thanh toán -->
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-bold bg-white border-0"><i class="bi bi-credit-card me-2"></i>Chọn phương thức thanh toán</div>
+                        <div class="card-body">
+                            <div class="form-check mb-3 p-3 border rounded">
+                                <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
+                                <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
+                            </div>
+                            <div class="form-check mb-3 p-3 border rounded">
+                                <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
+                                <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
+                            </div>
+                            <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
+                                Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
+                            </div>
+                            <div class="form-check p-3 border rounded">
+                                <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
+                                <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
+                            </div>
+                            <div id="onlineSubOptions" style="display:none" class="mt-3 ps-2">
+                                <div class="d-flex flex-column gap-2">
+                                    <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#f0f6ff;border-color:#0068ff!important">
+                                        <input class="form-check-input m-0" type="radio" name="online_sub" value="vnpay" checked>
+                                        <span class="fw-semibold" style="color:#0068ff">VNPay</span>
+                                    </label>
+                                    <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#e8fbff;border-color:#00a1e4!important">
+                                        <input class="form-check-input m-0" type="radio" name="online_sub" value="zalopay">
+                                        <span class="fw-semibold" style="color:#00a1e4">ZaloPay</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-5">
+                    <div class="card border-0 shadow-sm" style="position:sticky;top:80px">
+                        <div class="card-header fw-bold text-white" style="background:#ff6b35"><i class="bi bi-receipt me-2"></i>Đơn hàng của bạn</div>
+                        <div class="card-body">
+                            <?php
+                            $rep_items = $conn->query("SELECT od.*, p.name FROM order_details od JOIN products p ON od.product_id=p.id WHERE od.order_id={$repay_order['id']}");
+                            while ($ri = $rep_items->fetch_assoc()):
+                            ?>
+                                <div class="d-flex justify-content-between mb-2 small">
+                                    <span class="text-truncate me-2" style="max-width:200px"><?= htmlspecialchars($ri['name']) ?> <span class="badge bg-secondary"><?= $ri['quantity'] ?></span></span>
+                                    <strong class="text-nowrap"><?= formatPrice($ri['unit_price'] * $ri['quantity']) ?></strong>
+                                </div>
+                            <?php endwhile; ?>
+                            <hr>
+                            <div class="d-flex justify-content-between fw-bold fs-5">
+                                <span>Tổng cộng:</span>
+                                <span style="color:#ff6b35"><?= formatPrice($repay_order['total_amount']) ?></span>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100 mt-3 py-2 fw-semibold">
+                                <i class="bi bi-bag-check me-2"></i>Xác nhận thanh toán
+                            </button>
+                            <a href="my_orders.php?id=<?= $repay_order['id'] ?>" class="btn btn-outline-secondary w-100 mt-2 btn-sm">
+                                <i class="bi bi-arrow-left me-1"></i>Quay lại
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+    <?php elseif ($repay_order && $repay_action === 'pay'): ?>
+        <?php
+        $pay_label = $repay_order['payment_method'] === 'online' ? 'Thanh toán ngay bằng VNPay' : 'Thanh toán đơn hàng';
+        ?>
+        <div class="card border-0 shadow-sm mx-auto" style="max-width:720px">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-credit-card-2-front" style="font-size:4rem;color:#ff6b35"></i>
+                <h4 class="fw-bold mt-3"><?= $pay_label ?></h4>
+                <p class="text-muted mb-4">Nhấn nút bên dưới để tiếp tục thanh toán đơn <?= htmlspecialchars($repay_order['order_code']) ?>.</p>
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    <a href="vnpay/vnpay_create_payment.php?order_id=<?= (int)$repay_order['id'] ?>" class="btn btn-primary">
+                        <i class="bi bi-bag-check me-2"></i>Thanh toán
+                    </a>
+                    <a href="checkout.php?repay=<?= (int)$repay_order['id'] ?>" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
+                    </a>
+                    <a href="my_orders.php?id=<?= (int)$repay_order['id'] ?>" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>Quay lại
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    <?php else: ?>
+        <!-- NORMAL CHECKOUT FORM -->
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i><?= $error ?></div>
+        <?php endif; ?>
+        <?php if (isset($_GET['zp_error'])): ?>
+            <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i><?= htmlspecialchars($_GET['zp_error']) ?></div>
+        <?php endif; ?>
+
         <form method="POST" id="checkoutForm" onsubmit="return validateCheckout()">
             <div class="row g-4">
                 <div class="col-lg-7">
@@ -191,6 +430,7 @@ require_once 'includes/header.php';
                             </div>
                         </div>
                     </div>
+
                     <div class="card border-0 shadow-sm">
                         <div class="card-header fw-bold bg-white border-0"><i class="bi bi-credit-card me-2"></i>Phương thức thanh toán</div>
                         <div class="card-body">
@@ -207,11 +447,24 @@ require_once 'includes/header.php';
                             </div>
                             <div class="form-check p-3 border rounded">
                                 <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
-                                <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến (MoMo, VNPay...)</label>
+                                <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
+                            </div>
+                            <div id="onlineSubOptions" style="display:none" class="mt-3 ps-2">
+                                <div class="d-flex flex-column gap-2">
+                                    <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#f0f6ff;border-color:#0068ff!important">
+                                        <input class="form-check-input m-0" type="radio" name="online_sub" value="vnpay" checked>
+                                        <span class="fw-semibold" style="color:#0068ff">VNPay</span>
+                                    </label>
+                                    <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor:pointer;background:#e8fbff;border-color:#00a1e4!important">
+                                        <input class="form-check-input m-0" type="radio" name="online_sub" value="zalopay">
+                                        <span class="fw-semibold" style="color:#00a1e4">ZaloPay</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
                 <div class="col-lg-5">
                     <div class="card border-0 shadow-sm" style="position:sticky;top:80px">
                         <div class="card-header fw-bold text-white" style="background:#ff6b35"><i class="bi bi-receipt me-2"></i>Đơn hàng của bạn</div>
@@ -240,6 +493,26 @@ require_once 'includes/header.php';
         </form>
     <?php endif; ?>
 </div>
+
+<style>
+    .opt-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        padding: 10px 14px;
+        background: #fff;
+        transition: border-color .2s, box-shadow .2s;
+    }
+
+    .opt-name {
+        font-size: .95rem;
+        font-weight: 500;
+        color: #333;
+    }
+</style>
+
 <script>
     function toggleAddress(cb) {
         document.getElementById('savedAddress').style.display = cb.checked ? 'block' : 'none';
@@ -247,7 +520,10 @@ require_once 'includes/header.php';
     }
 
     function showPayment(m) {
-        document.getElementById('transferInfo').style.display = m === 'transfer' ? 'block' : 'none';
+        const transferInfo = document.getElementById('transferInfo');
+        const onlineSubOptions = document.getElementById('onlineSubOptions');
+        if (transferInfo) transferInfo.style.display = m === 'transfer' ? 'block' : 'none';
+        if (onlineSubOptions) onlineSubOptions.style.display = m === 'online' ? 'block' : 'none';
     }
 
     function validateCheckout() {

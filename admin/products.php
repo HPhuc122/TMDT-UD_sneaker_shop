@@ -8,14 +8,29 @@ $msg = '';
 // DELETE
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
-    // Check if product has been imported
-    $has_import = $conn->query("SELECT COUNT(*) as c FROM import_details WHERE product_id=$id")->fetch_assoc()['c'];
-    if ($has_import > 0) {
-        $conn->query("UPDATE products SET status='hidden' WHERE id=$id");
-        $msg = '<div class="alert alert-info">Sản phẩm đã được nhập hàng, đã ẩn sản phẩm.</div>';
+
+    // Check product exists
+    $exists = $conn->query("SELECT id FROM products WHERE id=$id")->num_rows;
+    if (!$exists) {
+        $msg = '<div class="alert alert-danger">Sản phẩm không tồn tại.</div>';
     } else {
-        $conn->query("DELETE FROM products WHERE id=$id");
-        $msg = '<div class="alert alert-success">Đã xóa sản phẩm.</div>';
+
+        $check = $conn->query("SELECT 
+                (SELECT COUNT(*) FROM import_details WHERE product_id=$id) as has_import,
+                (SELECT COUNT(*) FROM order_details WHERE product_id=$id) as has_order,
+                (SELECT COALESCE(SUM(stock_quantity),0) FROM product_varieties WHERE product_id=$id) as has_stock")->fetch_assoc();
+
+        $has_import = (int)$check['has_import'];
+        $has_order  = (int)$check['has_order'];
+        $has_stock  = (int)$check['has_stock'];
+
+        if ($has_import > 0 || $has_order > 0 || $has_stock > 0) {
+            $conn->query("UPDATE products SET status='hidden' WHERE id=$id");
+            $msg = '<div class="alert alert-info">Sản phẩm đã phát sinh dữ liệu → đã chuyển sang ẩn.</div>';
+        } else {
+            $conn->query("DELETE FROM products WHERE id=$id");
+            $msg = '<div class="alert alert-success">Đã xóa sản phẩm.</div>';
+        }
     }
 }
 

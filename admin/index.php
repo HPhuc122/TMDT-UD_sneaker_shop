@@ -4,11 +4,12 @@ require_once '_layout.php';
 adminHeader('Dashboard');
 
 // Stats
-$total_products = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
-$total_orders   = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
-$pending_orders = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
-$total_revenue  = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status='delivered'")->fetch_assoc()['s'];
-$total_users    = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
+$total_products    = $conn->query("SELECT COUNT(*) as c FROM products WHERE status='active'")->fetch_assoc()['c'];
+$total_orders      = $conn->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
+$pending_orders    = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
+$awaiting_orders   = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='awaiting_payment'")->fetch_assoc()['c'];
+$total_revenue     = $conn->query("SELECT COALESCE(SUM(total_amount),0) as s FROM orders WHERE status IN ('confirmed','delivered')")->fetch_assoc()['s'];
+$total_users       = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='customer'")->fetch_assoc()['c'];
 
 // Low stock
 $low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
@@ -22,8 +23,8 @@ $low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
 // Recent orders
 $recent_orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC LIMIT 8");
 
-$statusColor = ['pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
-$statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
+$statusColor = ['awaiting_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
 ?>
 
 <div class="row g-4 mb-4">
@@ -44,7 +45,15 @@ $statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận'
                 <i class="bi bi-bag-check fs-2 opacity-75"></i>
                 <div>
                     <div class="fs-4 fw-bold"><?= $total_orders ?></div>
-                    <div class="small opacity-75">Tổng đơn hàng <span class="badge bg-white text-danger"><?= $pending_orders ?> chờ</span></div>
+                    <div class="small opacity-75">
+                        Tổng đơn hàng
+                        <?php if ($pending_orders > 0): ?>
+                        <span class="badge bg-white text-danger"><?= $pending_orders ?> chờ xử lý</span>
+                        <?php endif; ?>
+                        <?php if ($awaiting_orders > 0): ?>
+                        <span class="badge bg-white text-secondary"><?= $awaiting_orders ?> chờ TT</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -98,7 +107,7 @@ $statusLabel = ['pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận'
                                 <td><a href="orders.php?id=<?= $o['id'] ?>" class="fw-semibold text-decoration-none"><?= htmlspecialchars($o['order_code']) ?></a></td>
                                 <td><?= htmlspecialchars($o['full_name']) ?></td>
                                 <td><?= formatPrice($o['total_amount']) ?></td>
-                                <td><span class="badge bg-<?= $statusColor[$o['status']] ?>"><?= $statusLabel[$o['status']] ?></span></td>
+                                <td><span class="badge bg-<?= $statusColor[$o['status']] ?? 'dark' ?>"><?= $statusLabel[$o['status']] ?? 'Không xác định' ?></span></td>
                                 <td class="text-muted small"><?= date('d/m H:i', strtotime($o['created_at'])) ?></td>
                             </tr>
                         <?php endwhile; ?>

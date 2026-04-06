@@ -12,6 +12,12 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?php
+    // Fix đường dẫn khi include header từ thư mục con (vd: zalo_pay/, admin/)
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
+    $baseUrl = rtrim(preg_replace('#/(zalo_pay|admin)(/.*)?$#', '', $scriptDir), '/') . '/';
+    ?>
+    <base href="<?= htmlspecialchars($baseUrl) ?>">
     <title><?= isset($pageTitle) ? $pageTitle . ' - ' : '' ?>SneakerShop</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
@@ -124,7 +130,7 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                         </li>
                     <?php else: ?>
                         <li class="nav-item">
-                            <a class="nav-link d-flex align-items-center" href="/login.php">
+                            <a class="nav-link d-flex align-items-center" href="login.php">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Đăng nhập
                             </a>
                         </li>
