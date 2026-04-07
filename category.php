@@ -60,10 +60,16 @@ $pageTitle = $category ? $category['name'] : 'Tất cả sản phẩm';
 
     <div class="row g-4">
         <?php while ($p = $products->fetch_assoc()): ?>
-            <div class="col-sm-6 col-lg-4">
-                <div class="card h-100">
+            <div class="col-6 col-md-4 col-lg-3">
+                <div class="card product-card h-100 shadow-sm">
 
-                    <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top">
+                    <?php if ($p['image'] && file_exists('uploads/' . $p['image'])): ?>
+                        <img src="uploads/<?= htmlspecialchars($p['image']) ?>" class="card-img-top product-img" alt="<?= htmlspecialchars($p['name']) ?>">
+                    <?php else: ?>
+                        <div class="product-img d-flex align-items-center justify-content-center bg-light">
+                            <i class="bi bi-shoe fs-1 text-secondary"></i>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="card-body d-flex flex-column">
                         <span class="badge bg-dark mb-2"><?= htmlspecialchars($p['cat_name']) ?></span>

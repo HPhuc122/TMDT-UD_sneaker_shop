@@ -12,26 +12,28 @@ if (isset($_GET['complete'])) {
     if ($receipt) {
         // Update stock and import price (weighted average)
         $details = $conn->query("SELECT * FROM import_details WHERE receipt_id=$id");
+
         while ($d = $details->fetch_assoc()) {
             $pid = $d['product_id'];
-            $size_id   =  $d['size_id'];
-            $color_id   =  $d['color_id'];
-            $pv = $conn->query("SELECT import_price,(SELECT SUM(pv.stock_quantity)
-                                                    FROM product_varieties pv
-                                                    WHERE pv.product_id = products.id) AS stock_quantity
-                                FROM products
-                                WHERE id=$pid")->fetch_assoc();
-            $old_qty   = $pv['stock_quantity'];
-            $old_price = $pv['import_price'];
-            $new_qty   = $d['quantity'];
-            $new_price = $d['import_price'];
-            $avg_price = ($old_qty + $new_qty) > 0 ? ($old_qty * $old_price + $new_qty * $new_price) / ($old_qty + $new_qty) : $new_price;
-            $result = $conn->query("SELECT * FROM product_varieties WHERE id = $pid AND color_id = $color_id AND size_id = $size_id");
+            $size_id = $d['size_id'];
+            $color_id = $d['color_id'];
 
-            if ($result->num_rows > 0) {
-                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $new_qty, import_price = $avg_price WHERE id = $pid AND color_id = $color_id AND size_id = $size_id");
+            $new_qty = (int)$d['quantity'];
+            $new_price = (float)$d['import_price'];
+            $pv = $conn->query("SELECT stock_quantity, price FROM product_varieties WHERE product_id = $pid AND size_id = $size_id AND color_id = $color_id")->fetch_assoc();
+
+            if ($pv) {
+                $old_qty = (int)$pv['stock_quantity'];
+                $old_price = (float)$pv['price'];
+
+                $avg_price = ($old_qty + $new_qty) > 0
+                    ? (($old_qty * $old_price + $new_qty * $new_price) / ($old_qty + $new_qty))
+                    : $new_price;
+
+                $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $new_qty, price = $avg_price WHERE product_id = $pid AND size_id = $size_id AND color_id = $color_id");
             } else {
-                $conn->query("INSERT INTO product_varieties (id, color_id, size_id, stock_quantity, import_price) VALUES ($pid, $color_id, $size_id, $new_qty, $avg_price)");
+                $conn->query("INSERT INTO product_varieties (product_id, size_id, color_id, stock_quantity, price)
+                            VALUES ($pid, $size_id, $color_id, $new_qty, $new_price)");
             }
         }
         $conn->query("UPDATE import_receipts SET status='completed' WHERE id=$id");
@@ -70,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $price = (float)$_POST['import_price'];
         if ($pid && $qty > 0 && $price > 0) {
             // Check if product already in receipt, update qty
-            $existing = $conn->query("SELECT id FROM import_details WHERE receipt_id=$rid AND product_id=$pid")->fetch_assoc();
+            $existing = $conn->query("SELECT id FROM import_details WHERE receipt_id=$rid AND product_id=$pid AND size_id = $size_id AND color_id = $color_id")->fetch_assoc();
             if ($existing) {
                 $conn->query("UPDATE import_details SET quantity=quantity+$qty, import_price=$price WHERE receipt_id=$rid AND product_id=$pid and size_id = $size_id and color_id = $color_id");
             } else {
