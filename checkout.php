@@ -104,13 +104,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
         if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
             $conn->begin_transaction();
             try {
-                $order_code = generateCode('DH');
-                $status     = getOnlinePendingStatus($conn);
+                $discount_id  = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
+                $discount_amt = isset($_POST['discount_amount']) ? (float)$_POST['discount_amount'] : 0;
+                $final_total  = $total - $discount_amt;
 
-                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sisssssssdss', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $status, $notes);
+                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,discount_code_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,discount_amount,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('siisssssssddss', $order_code, $user_id, $discount_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $final_total, $discount_amt, $status, $notes);
                 $stmt->execute();
                 $order_id = $conn->insert_id;
+
+                // Update discount usage if used
+                if ($discount_id) {
+                    $conn->query("UPDATE discount_codes SET total_used = total_used + 1 WHERE id = $discount_id");
+                    $conn->query("INSERT INTO discount_code_usages (discount_code_id, user_id, order_id) VALUES ($discount_id, $user_id, $order_id)");
+                }
 
                 $setSql = "status='" . $conn->real_escape_string($status) . "'";
                 if ($hasPaymentStatusCol)   $setSql .= ", payment_status='pending'";
@@ -163,12 +170,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
             $conn->begin_transaction();
             try {
                 $order_code = generateCode('DH');
-                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sisssssssds', $order_code, $user_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $total, $notes);
+                $discount_id  = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
+                $discount_amt = isset($_POST['discount_amount']) ? (float)$_POST['discount_amount'] : 0;
+                $final_total  = $total - $discount_amt;
+
+                $stmt = $conn->prepare("INSERT INTO orders (order_code,user_id,discount_code_id,receiver_name,receiver_phone,shipping_address,ward,district,city,payment_method,total_amount,discount_amount,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('siisssssssdds', $order_code, $user_id, $discount_id, $receiver, $phone, $address, $ward, $district, $city, $payment, $final_total, $discount_amt, $notes);
                 if (!$stmt->execute()) {
                     throw new Exception('Có lỗi khi tạo đơn hàng. Vui lòng thử lại.');
                 }
                 $order_id = $conn->insert_id;
+
+                // Update discount usage if used
+                if ($discount_id) {
+                    $conn->query("UPDATE discount_codes SET total_used = total_used + 1 WHERE id = $discount_id");
+                    $conn->query("INSERT INTO discount_code_usages (discount_code_id, user_id, order_id) VALUES ($discount_id, $user_id, $order_id)");
+                }
 
                 $detailStmt      = $conn->prepare("INSERT INTO order_details (order_id,product_id,size_id,color_id,quantity,unit_price) VALUES (?,?,?,?,?,?)");
                 $stockStmt       = $conn->prepare("SELECT stock_quantity FROM product_varieties WHERE product_id=? AND size_id=? AND color_id=? FOR UPDATE");
@@ -247,7 +264,15 @@ require_once 'includes/header.php';
                             </div>
                         <?php endwhile; ?>
                         <hr class="my-2">
-                        <div class="d-flex justify-content-between fw-bold" style="color:#ff6b35">
+                        <div class="d-flex justify-content-between small">
+                            <span>Tạm tính:</span><span><?= formatPrice($ord['total_amount'] + $ord['discount_amount']) ?></span>
+                        </div>
+                        <?php if ($ord['discount_amount'] > 0): ?>
+                        <div class="d-flex justify-content-between small text-success">
+                            <span>Giảm giá:</span><span>-<?= formatPrice($ord['discount_amount']) ?></span>
+                        </div>
+                        <?php endif; ?>
+                        <div class="d-flex justify-content-between fw-bold mt-1" style="color:#ff6b35">
                             <span>Tổng cộng:</span><span><?= formatPrice($ord['total_amount']) ?></span>
                         </div>
                         <hr class="my-2">
@@ -342,7 +367,15 @@ require_once 'includes/header.php';
                                 </div>
                             <?php endwhile; ?>
                             <hr>
-                            <div class="d-flex justify-content-between fw-bold fs-5">
+                            <div class="d-flex justify-content-between small">
+                                <span>Tạm tính:</span><span><?= formatPrice($repay_order['total_amount'] + $repay_order['discount_amount']) ?></span>
+                            </div>
+                            <?php if ($repay_order['discount_amount'] > 0): ?>
+                            <div class="d-flex justify-content-between small text-success">
+                                <span>Giảm giá:</span><span>-<?= formatPrice($repay_order['discount_amount']) ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
                                 <span>Tổng cộng:</span>
                                 <span style="color:#ff6b35"><?= formatPrice($repay_order['total_amount']) ?></span>
                             </div>
@@ -476,10 +509,32 @@ require_once 'includes/header.php';
                                 </div>
                             <?php endforeach; ?>
                             <hr>
+                            <hr>
+                            <!-- Mã giảm giá -->
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Mã giảm giá (nếu có)</label>
+                                <div class="input-group">
+                                    <input type="text" id="discountCode" class="form-control form-control-sm" placeholder="Nhập mã..." style="text-transform:uppercase">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="applyDiscount()">Áp dụng</button>
+                                </div>
+                                <div id="discountMsg" class="small mt-1"></div>
+                            </div>
+
+                            <div id="discountInfo" style="display:none">
+                                <div class="d-flex justify-content-between mb-2 small text-success fw-semibold">
+                                    <span>Giảm giá:</span>
+                                    <span id="discountValueText">-0 ₫</span>
+                                </div>
+                            </div>
+
                             <div class="d-flex justify-content-between fw-bold fs-5">
                                 <span>Tổng cộng:</span>
-                                <span style="color:#ff6b35"><?= formatPrice($total) ?></span>
+                                <span id="finalTotalText" style="color:#ff6b35"><?= formatPrice($total) ?></span>
                             </div>
+
+                            <!-- Hidden inputs for discount info -->
+                            <input type="hidden" name="discount_id" id="hiddenDiscountId">
+                            <input type="hidden" name="discount_amount" id="hiddenDiscountAmount" value="0">
                             <button type="submit" class="btn btn-primary w-100 mt-3 py-2 fw-semibold">
                                 <i class="bi bi-bag-check me-2"></i>Đặt hàng ngay
                             </button>
@@ -542,6 +597,48 @@ require_once 'includes/header.php';
             }
         }
         return true;
+    }
+
+    async function applyDiscount() {
+        const code = document.getElementById('discountCode').value.trim();
+        const msgDiv = document.getElementById('discountMsg');
+        const infoDiv = document.getElementById('discountInfo');
+        const valText = document.getElementById('discountValueText');
+        const totalText = document.getElementById('finalTotalText');
+        const hId = document.getElementById('hiddenDiscountId');
+        const hAmt = document.getElementById('hiddenDiscountAmount');
+
+        if (!code) return;
+
+        msgDiv.innerHTML = '<span class="text-muted">Đang kiểm tra...</span>';
+
+        try {
+            const formData = new FormData();
+            formData.append('code', code);
+
+            const res = await fetch('api/check_discount.php', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                msgDiv.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${data.message}</span>`;
+                infoDiv.style.display = 'block';
+                valText.innerText = '-' + new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(data.discount_amount);
+                totalText.innerText = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(data.new_total);
+                hId.value = data.discount_id;
+                hAmt.value = data.discount_amount;
+            } else {
+                msgDiv.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>${data.message}</span>`;
+                infoDiv.style.display = 'none';
+                totalText.innerText = '<?= formatPrice($total) ?>';
+                hId.value = '';
+                hAmt.value = '0';
+            }
+        } catch (err) {
+            msgDiv.innerHTML = '<span class="text-danger">Lỗi kết nối. Vui lòng thử lại.</span>';
+        }
     }
 </script>
 <?php require_once 'includes/footer.php'; ?>
