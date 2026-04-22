@@ -99,9 +99,25 @@ if ($discount['apply_to'] === 'category') {
         echo json_encode(['success' => false, 'message' => 'Mã này chỉ áp dụng cho một số danh mục giày nhất định mà bạn không chọn.']);
         exit;
     }
-    // Note: If type is fixed, it applies to the whole order if at least one eligible item is present.
-    // If requirement says "only apply to products in those categories", I should adjust.
-    // But requirement says "Áp dụng cho: Tất cả sản phẩm / Chọn danh mục giày cụ thể" -> usually means scope of validity.
+} elseif ($discount['apply_to'] === 'product') {
+    // Get allowed products
+    $prod_res = $conn->query("SELECT product_id FROM discount_code_products WHERE discount_code_id = {$discount['id']}");
+    $allowed_prods = [];
+    while ($pr = $prod_res->fetch_assoc()) {
+        $allowed_prods[] = (int)$pr['product_id'];
+    }
+
+    $eligible_total = 0;
+    foreach ($cart as $item) {
+        if (in_array((int)$item['product_id'], $allowed_prods)) {
+            $eligible_total += $item['price'] * $item['qty'];
+        }
+    }
+
+    if ($eligible_total <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Mã này chỉ áp dụng cho một số sản phẩm nhất định mà bạn không chọn.']);
+        exit;
+    }
 }
 
 // Calculate discount amount
@@ -110,6 +126,10 @@ if ($discount['discount_type'] === 'fixed') {
     $discount_amount = $discount['discount_value'];
 } else {
     $discount_amount = $cart_total * ($discount['discount_value'] / 100);
+    // Cap by max_discount_amount
+    if ($discount['max_discount_amount'] !== null && $discount_amount > $discount['max_discount_amount']) {
+        $discount_amount = $discount['max_discount_amount'];
+    }
 }
 
 // Cap discount at total amount

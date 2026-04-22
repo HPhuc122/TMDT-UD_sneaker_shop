@@ -512,8 +512,15 @@ require_once 'includes/header.php';
                             <hr>
                             <!-- Mã giảm giá -->
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Mã giảm giá (nếu có)</label>
-                                <div class="input-group">
+                                <label class="form-label small fw-bold"><i class="bi bi-ticket-perforated me-1"></i>Mã giảm giá</label>
+                                
+                                <!-- Saved Coupons List -->
+                                <div id="savedCouponsArea" class="mb-2" style="display:none">
+                                    <div class="small text-muted mb-1">Mã đã lưu của bạn:</div>
+                                    <div id="savedCouponsList" class="d-flex flex-column gap-2 pe-2 py-1" style="max-height: 220px; overflow-y: auto;"></div>
+                                </div>
+
+                                <div class="input-group mt-2">
                                     <input type="text" id="discountCode" class="form-control form-control-sm" placeholder="Nhập mã..." style="text-transform:uppercase">
                                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="applyDiscount()">Áp dụng</button>
                                 </div>
@@ -640,5 +647,98 @@ require_once 'includes/header.php';
             msgDiv.innerHTML = '<span class="text-danger">Lỗi kết nối. Vui lòng thử lại.</span>';
         }
     }
+
+    async function loadSavedCoupons() {
+        const area = document.getElementById('savedCouponsArea');
+        const list = document.getElementById('savedCouponsList');
+        
+        try {
+            // 1. Get DB coupons
+            const res = await fetch('api/get_saved_coupons.php');
+            let dbCoupons = await res.json();
+            
+            // 2. Get Guest coupons from localStorage
+            let guestCodes = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
+            let guestCoupons = [];
+            
+            if (guestCodes.length > 0) {
+                const formData = new FormData();
+                formData.append('codes', JSON.stringify(guestCodes));
+                const gRes = await fetch('api/get_coupons_by_codes.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                guestCoupons = await gRes.json();
+            }
+
+            // Merge and de-duplicate by code
+            let allCouponsMap = {};
+            dbCoupons.forEach(c => allCouponsMap[c.code] = c);
+            guestCoupons.forEach(c => {
+                if (!allCouponsMap[c.code]) allCouponsMap[c.code] = c;
+            });
+            
+            let allCoupons = Object.values(allCouponsMap);
+            
+            if (allCoupons.length > 0) {
+                area.style.display = 'block';
+                list.innerHTML = '';
+                
+                let bestCoupon = null;
+                let maxSaving = -1;
+
+                allCoupons.forEach(c => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `btn btn-sm text-start border p-2 d-flex justify-content-between align-items-center mb-1 ${c.is_applicable ? 'btn-light' : 'btn-light opacity-50'}`;
+                    if (!c.is_applicable) btn.disabled = true;
+                    
+                    btn.innerHTML = `
+                        <div>
+                            <div class="fw-bold text-primary" style="font-size:0.75rem">${c.code}</div>
+                            <div class="small" style="font-size:0.7rem">${c.description}</div>
+                            ${!c.is_applicable ? `<div class="text-danger" style="font-size:0.65rem">${c.reason}</div>` : ''}
+                        </div>
+                        ${c.is_applicable ? '<i class="bi bi-chevron-right small text-muted"></i>' : ''}
+                    `;
+                    
+                    if (c.is_applicable) {
+                        btn.onclick = () => {
+                            document.getElementById('discountCode').value = c.code;
+                            applyDiscount();
+                        };
+
+                        // Auto-best logic (simple estimate)
+                        let saving = 0;
+                        if (c.discount_type === 'fixed') saving = c.discount_value;
+                        else {
+                            const cartTotal = <?= $total ?>;
+                            saving = cartTotal * (c.discount_value / 100);
+                            if (c.max_discount && saving > c.max_discount) saving = c.max_discount;
+                        }
+
+                        if (saving > maxSaving) {
+                            maxSaving = saving;
+                            bestCoupon = c;
+                        }
+                    }
+                    
+                    list.appendChild(btn);
+                });
+
+                // Auto apply best if it saves money
+                if (bestCoupon && maxSaving > 0) {
+                    const msgDiv = document.getElementById('discountMsg');
+                    msgDiv.innerHTML = `<span class="text-primary small fw-semibold"><i class="bi bi-magic me-1"></i>Đã tự động chọn mã tốt nhất cho bạn!</span>`;
+                    document.getElementById('discountCode').value = bestCoupon.code;
+                    applyDiscount();
+                }
+            }
+        } catch (err) {
+            console.error('Lỗi khi tải coupon đã lưu:', err);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSavedCoupons);
 </script>
 <?php require_once 'includes/footer.php'; ?>
