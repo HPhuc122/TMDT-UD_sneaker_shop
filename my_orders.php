@@ -207,6 +207,16 @@ if ($detail_id > 0) {
                     </tbody>
                     <tfoot>
                         <tr>
+                            <td colspan="3" class="text-end">Tạm tính:</td>
+                            <td class="text-end"><?= formatPrice($orderDetail['total_amount'] + $orderDetail['discount_amount']) ?></td>
+                        </tr>
+                        <?php if ($orderDetail['discount_amount'] > 0): ?>
+                        <tr>
+                            <td colspan="3" class="text-end text-success">Giảm giá:</td>
+                            <td class="text-end text-success">-<?= formatPrice($orderDetail['discount_amount']) ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <tr>
                             <td colspan="3" class="text-end fw-bold">Tổng cộng:</td>
                             <td class="text-end fw-bold" style="color:#ff6b35"><?= formatPrice($orderDetail['total_amount']) ?></td>
                         </tr>

@@ -233,6 +233,12 @@ require_once 'includes/header.php';
                     <p class="text-muted small mb-3"><i class="bi bi-layers me-1"></i>Chất liệu: <strong class="text-dark"><?= htmlspecialchars($product['material']) ?></strong></p>
                 <?php endif; ?>
 
+                <!-- Voucher Section -->
+                <div id="productCoupons" class="mb-4 pt-3 border-top" style="display:none">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-ticket-perforated me-2 text-primary"></i>Ưu đãi dành cho bạn</h6>
+                    <div id="couponList" class="d-flex flex-column gap-2"></div>
+                </div>
+
                 <?php if ($product['stock_quantity'] > 0): ?>
                     <form method="POST" id="addCartForm">
                         <!-- Size selector -->
@@ -327,12 +333,24 @@ require_once 'includes/header.php';
 </div>
 
 <script>
+    window.productSellPrice = <?= $product['sell_price'] ?>;
+    window.productCoupons = [];
+
     function changeQty(delta) {
         const input = document.getElementById('qty');
         const max = parseInt(input.max);
         const val = parseInt(input.value) + delta;
-        if (val >= 1 && val <= max) input.value = val;
+        if (val >= 1 && val <= max) {
+            input.value = val;
+            renderProductCoupons();
+        }
     }
+    
+    document.getElementById('qty').addEventListener('change', function() {
+        if (parseInt(this.value) < 1) this.value = 1;
+        if (parseInt(this.value) > parseInt(this.max)) this.value = this.max;
+        renderProductCoupons();
+    });
 
     function selectSize(btn) {
         // Deselect all
@@ -405,6 +423,100 @@ require_once 'includes/header.php';
             container.appendChild(el);
         });
     }
+
+    // Advanced Voucher Logic
+    function renderProductCoupons() {
+        const container = document.getElementById('couponList');
+        const section = document.getElementById('productCoupons');
+        const currentQty = parseInt(document.getElementById('qty')?.value || 1);
+        const currentTotal = currentQty * window.productSellPrice;
+
+        const validCoupons = window.productCoupons.filter(c => c.min_order <= currentTotal);
+
+        if (validCoupons.length > 0) {
+            section.style.display = 'block';
+            container.innerHTML = '';
+            
+            let guestSaved = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
+
+            validCoupons.forEach(c => {
+                const isSaved = c.is_saved || guestSaved.includes(c.code);
+                const card = document.createElement('div');
+                card.className = 'd-flex align-items-center justify-content-between p-2 rounded border bg-light small';
+                card.innerHTML = `
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-primary text-white py-2 px-2" style="border: 1px dashed #fff">${c.code}</span>
+                        <div>
+                            <div class="fw-bold text-dark">${c.description}</div>
+                            <div class="text-muted" style="font-size:0.75rem">Đơn từ ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(c.min_order)}</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm ${isSaved ? 'btn-secondary disabled' : 'btn-outline-primary'} save-coupon-btn" 
+                            data-id="${c.id}" onclick="saveCoupon(this)">
+                        ${isSaved ? 'Đã lưu' : 'Lưu mã'}
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        } else {
+            section.style.display = 'none';
+        }
+    }
+
+    async function loadProductCoupons() {
+        const pid = <?= $id ?>;
+        try {
+            const res = await fetch(`api/get_product_coupons.php?product_id=${pid}`);
+            window.productCoupons = await res.json();
+            renderProductCoupons();
+        } catch (err) {
+            console.error('Lỗi khi tải coupon:', err);
+        }
+    }
+
+    async function saveCoupon(btn) {
+        const cid = btn.dataset.id;
+        const code = btn.closest('.card').querySelector('.badge').innerText;
+
+        if (document.body.classList.contains('logged-in') || <?= isLoggedIn() ? 'true' : 'false' ?>) {
+            // Save to DB
+            try {
+                const formData = new FormData();
+                formData.append('coupon_id', cid);
+                const res = await fetch('api/save_coupon.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    btn.innerText = 'Đã lưu';
+                    btn.classList.remove('btn-outline-primary');
+                    btn.classList.add('btn-secondary', 'disabled');
+                    alert(data.message);
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                alert('Lỗi kết nối. Vui lòng thử lại.');
+            }
+        } else {
+            // Save to localStorage for guests
+            let saved = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
+            if (!saved.includes(code)) {
+                saved.push(code);
+                localStorage.setItem('guest_coupons', JSON.stringify(saved));
+                btn.innerText = 'Đã lưu';
+                btn.classList.remove('btn-outline-primary');
+                btn.classList.add('btn-secondary', 'disabled');
+                alert('Đã lưu mã vào máy của bạn! Đăng nhập để lưu vĩnh viễn.');
+            } else {
+                alert('Mã này đã được lưu.');
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProductCoupons);
 </script>
 
 <?php require_once 'includes/footer.php'; ?>

@@ -115,4 +115,114 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count
     </div>
 </div>
 
+<!-- Floating Voucher Button -->
+<button type="button" class="btn btn-warning rounded-circle shadow-lg d-flex align-items-center justify-content-center" 
+        style="position:fixed; bottom:30px; right:30px; width:60px; height:60px; z-index:1000;" 
+        data-bs-toggle="modal" data-bs-target="#voucherModal" title="Kho Voucher">
+    <i class="bi bi-ticket-perforated fs-3 text-dark"></i>
+</button>
+
+<!-- Voucher Modal -->
+<div class="modal fade" id="voucherModal" tabindex="-1" aria-labelledby="voucherModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="voucherModalLabel"><i class="bi bi-ticket-perforated me-2 text-warning"></i>Kho Voucher Nóng</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="homeCouponList" class="d-flex flex-column gap-3">
+            <div class="text-center text-muted py-4">Đang tải mã giảm giá...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    async function loadHomeCoupons() {
+        const container = document.getElementById('homeCouponList');
+        try {
+            const res = await fetch('api/get_all_active_coupons.php');
+            const coupons = await res.json();
+
+            if (coupons.length > 0) {
+                container.innerHTML = '';
+                let guestSaved = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
+
+                coupons.forEach(c => {
+                    const isSaved = c.is_saved || guestSaved.includes(c.code);
+                    const card = document.createElement('div');
+                    card.className = 'd-flex align-items-center justify-content-between p-3 rounded shadow-sm border bg-light';
+                    card.innerHTML = `
+                        <div class="d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-primary text-white fs-6 py-1 px-2" style="border: 1px dashed #fff">${c.code}</span>
+                                <span class="badge bg-secondary opacity-75">${c.scope_text}</span>
+                            </div>
+                            <div class="fw-bold text-dark mt-1">${c.description}</div>
+                            <div class="text-muted small">Đơn từ ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(c.min_order)}</div>
+                        </div>
+                        <button class="btn btn-sm ${isSaved ? 'btn-secondary disabled' : 'btn-outline-primary fw-semibold'} save-home-coupon-btn flex-shrink-0 ms-3" 
+                                data-id="${c.id}" data-code="${c.code}" onclick="saveHomeCoupon(this)">
+                            ${isSaved ? 'Đã lưu' : 'Lưu mã'}
+                        </button>
+                    `;
+                    container.appendChild(card);
+                });
+            } else {
+                container.innerHTML = '<div class="text-center text-muted py-4">Hiện chưa có mã giảm giá nào.</div>';
+            }
+        } catch (err) {
+            container.innerHTML = '<div class="text-danger text-center py-4">Lỗi kết nối. Vui lòng thử lại.</div>';
+        }
+    }
+
+    async function saveHomeCoupon(btn) {
+        const cid = btn.dataset.id;
+        const code = btn.dataset.code;
+
+        if (document.body.classList.contains('logged-in') || <?= isLoggedIn() ? 'true' : 'false' ?>) {
+            // Save to DB
+            try {
+                const formData = new FormData();
+                formData.append('coupon_id', cid);
+                const res = await fetch('api/save_coupon.php', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    btn.innerText = 'Đã lưu';
+                    btn.classList.remove('btn-outline-primary');
+                    btn.classList.add('btn-secondary', 'disabled');
+                    alert(data.message);
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                alert('Lỗi kết nối. Vui lòng thử lại.');
+            }
+        } else {
+            // Save to localStorage
+            let saved = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
+            if (!saved.includes(code)) {
+                saved.push(code);
+                localStorage.setItem('guest_coupons', JSON.stringify(saved));
+                btn.innerText = 'Đã lưu';
+                btn.classList.remove('btn-outline-primary');
+                btn.classList.add('btn-secondary', 'disabled');
+                alert('Đã lưu mã vào máy của bạn! Đăng nhập để lưu vĩnh viễn.');
+            } else {
+                alert('Mã này đã được lưu.');
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const modalEl = document.getElementById('voucherModal');
+        if (modalEl) {
+            modalEl.addEventListener('show.bs.modal', loadHomeCoupons);
+        }
+    });
+</script>
+
 <?php require_once 'includes/footer.php'; ?>

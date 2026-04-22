@@ -48,6 +48,7 @@ HTML;
         ['categories.php',  'bi-grid',          'Danh mục'],
         ['imports.php',     'bi-truck',         'Nhập hàng'],
         ['orders.php',      'bi-bag-check',     'Đơn hàng'],
+        ['discounts.php',   'bi-ticket-perforated', 'Mã giảm giá'],
         ['users.php',       'bi-people',        'Người dùng'],
         ['inventory.php',   'bi-bar-chart',     'Tồn kho & Báo cáo'],
     ];
