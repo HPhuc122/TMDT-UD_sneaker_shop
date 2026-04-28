@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
         if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
             $conn->begin_transaction();
             try {
-                $discount_id  = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
+                $discount_id = !empty($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
                 $discount_amt = isset($_POST['discount_amount']) ? (float)$_POST['discount_amount'] : 0;
                 $final_total  = $total - $discount_amt;
 
@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
             $conn->begin_transaction();
             try {
                 $order_code = generateCode('DH');
-                $discount_id  = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
+                $discount_id = !empty($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
                 $discount_amt = isset($_POST['discount_amount']) ? (float)$_POST['discount_amount'] : 0;
                 $final_total  = $total - $discount_amt;
 
@@ -268,9 +268,9 @@ require_once 'includes/header.php';
                             <span>Tạm tính:</span><span><?= formatPrice($ord['total_amount'] + $ord['discount_amount']) ?></span>
                         </div>
                         <?php if ($ord['discount_amount'] > 0): ?>
-                        <div class="d-flex justify-content-between small text-success">
-                            <span>Giảm giá:</span><span>-<?= formatPrice($ord['discount_amount']) ?></span>
-                        </div>
+                            <div class="d-flex justify-content-between small text-success">
+                                <span>Giảm giá:</span><span>-<?= formatPrice($ord['discount_amount']) ?></span>
+                            </div>
                         <?php endif; ?>
                         <div class="d-flex justify-content-between fw-bold mt-1" style="color:#ff6b35">
                             <span>Tổng cộng:</span><span><?= formatPrice($ord['total_amount']) ?></span>
@@ -371,9 +371,9 @@ require_once 'includes/header.php';
                                 <span>Tạm tính:</span><span><?= formatPrice($repay_order['total_amount'] + $repay_order['discount_amount']) ?></span>
                             </div>
                             <?php if ($repay_order['discount_amount'] > 0): ?>
-                            <div class="d-flex justify-content-between small text-success">
-                                <span>Giảm giá:</span><span>-<?= formatPrice($repay_order['discount_amount']) ?></span>
-                            </div>
+                                <div class="d-flex justify-content-between small text-success">
+                                    <span>Giảm giá:</span><span>-<?= formatPrice($repay_order['discount_amount']) ?></span>
+                                </div>
                             <?php endif; ?>
                             <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
                                 <span>Tổng cộng:</span>
@@ -513,7 +513,7 @@ require_once 'includes/header.php';
                             <!-- Mã giảm giá -->
                             <div class="mb-3">
                                 <label class="form-label small fw-bold"><i class="bi bi-ticket-perforated me-1"></i>Mã giảm giá</label>
-                                
+
                                 <!-- Saved Coupons List -->
                                 <div id="savedCouponsArea" class="mb-2" style="display:none">
                                     <div class="small text-muted mb-1">Mã đã lưu của bạn:</div>
@@ -632,8 +632,14 @@ require_once 'includes/header.php';
             if (data.success) {
                 msgDiv.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${data.message}</span>`;
                 infoDiv.style.display = 'block';
-                valText.innerText = '-' + new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(data.discount_amount);
-                totalText.innerText = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(data.new_total);
+                valText.innerText = '-' + new Intl.NumberFormat('vi-VN', {
+                    style: 'currency',
+                    currency: 'VND'
+                }).format(data.discount_amount);
+                totalText.innerText = new Intl.NumberFormat('vi-VN', {
+                    style: 'currency',
+                    currency: 'VND'
+                }).format(data.new_total);
                 hId.value = data.discount_id;
                 hAmt.value = data.discount_amount;
             } else {
@@ -651,16 +657,16 @@ require_once 'includes/header.php';
     async function loadSavedCoupons() {
         const area = document.getElementById('savedCouponsArea');
         const list = document.getElementById('savedCouponsList');
-        
+
         try {
             // 1. Get DB coupons
             const res = await fetch('api/get_saved_coupons.php');
             let dbCoupons = await res.json();
-            
+
             // 2. Get Guest coupons from localStorage
             let guestCodes = JSON.parse(localStorage.getItem('guest_coupons') || '[]');
             let guestCoupons = [];
-            
+
             if (guestCodes.length > 0) {
                 const formData = new FormData();
                 formData.append('codes', JSON.stringify(guestCodes));
@@ -677,13 +683,13 @@ require_once 'includes/header.php';
             guestCoupons.forEach(c => {
                 if (!allCouponsMap[c.code]) allCouponsMap[c.code] = c;
             });
-            
+
             let allCoupons = Object.values(allCouponsMap);
-            
+
             if (allCoupons.length > 0) {
                 area.style.display = 'block';
                 list.innerHTML = '';
-                
+
                 let bestCoupon = null;
                 let maxSaving = -1;
 
@@ -692,7 +698,7 @@ require_once 'includes/header.php';
                     btn.type = 'button';
                     btn.className = `btn btn-sm text-start border p-2 d-flex justify-content-between align-items-center mb-1 ${c.is_applicable ? 'btn-light' : 'btn-light opacity-50'}`;
                     if (!c.is_applicable) btn.disabled = true;
-                    
+
                     btn.innerHTML = `
                         <div>
                             <div class="fw-bold text-primary" style="font-size:0.75rem">${c.code}</div>
@@ -701,7 +707,7 @@ require_once 'includes/header.php';
                         </div>
                         ${c.is_applicable ? '<i class="bi bi-chevron-right small text-muted"></i>' : ''}
                     `;
-                    
+
                     if (c.is_applicable) {
                         btn.onclick = () => {
                             document.getElementById('discountCode').value = c.code;
@@ -722,7 +728,7 @@ require_once 'includes/header.php';
                             bestCoupon = c;
                         }
                     }
-                    
+
                     list.appendChild(btn);
                 });
 

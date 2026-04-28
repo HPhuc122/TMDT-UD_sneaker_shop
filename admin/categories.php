@@ -9,8 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $name = sanitize($conn, $_POST['name'] ?? '');
     $desc = sanitize($conn, $_POST['description'] ?? '');
     if ($_POST['action'] === 'add') {
-        if (!$name) { $msg = '<div class="alert alert-danger">Vui lòng nhập tên danh mục.</div>'; }
-        else {
+        if (!$name) {
+            $msg = '<div class="alert alert-danger">Vui lòng nhập tên danh mục.</div>';
+        } else {
             $conn->query("INSERT INTO categories (name, description) VALUES ('$name','$desc')");
             $msg = '<div class="alert alert-success">Đã thêm danh mục thành công.</div>';
         }
@@ -54,7 +55,7 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count FROM catego
                 <form method="POST">
                     <input type="hidden" name="action" value="<?= $edit_cat ? 'edit' : 'add' ?>">
                     <?php if ($edit_cat): ?>
-                    <input type="hidden" name="id" value="<?= $edit_cat['id'] ?>">
+                        <input type="hidden" name="id" value="<?= $edit_cat['id'] ?>">
                     <?php endif; ?>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Tên danh mục <span class="text-danger">*</span></label>
@@ -68,7 +69,7 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count FROM catego
                         <?= $edit_cat ? 'Cập nhật' : 'Thêm danh mục' ?>
                     </button>
                     <?php if ($edit_cat): ?>
-                    <a href="categories.php" class="btn btn-outline-secondary w-100 mt-2">Hủy</a>
+                        <a href="categories.php" class="btn btn-outline-secondary w-100 mt-2">Hủy</a>
                     <?php endif; ?>
                 </form>
             </div>
@@ -84,20 +85,26 @@ $categories = $conn->query("SELECT c.*, COUNT(p.id) as product_count FROM catego
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
-                        <tr><th>#</th><th>Tên danh mục</th><th>Mô tả</th><th class="text-center">Số SP</th><th class="text-center">Thao tác</th></tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Tên danh mục</th>
+                            <th>Mô tả</th>
+                            <th class="text-center">Số SP</th>
+                            <th class="text-center">Thao tác</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php while ($c = $categories->fetch_assoc()): ?>
-                        <tr>
-                            <td class="text-muted"><?= $c['id'] ?></td>
-                            <td class="fw-semibold"><?= htmlspecialchars($c['name']) ?></td>
-                            <td class="text-muted small"><?= htmlspecialchars($c['description'] ?? '') ?></td>
-                            <td class="text-center"><span class="badge bg-secondary"><?= $c['product_count'] ?></span></td>
-                            <td class="text-center">
-                                <a href="categories.php?edit=<?= $c['id'] ?>" class="btn btn-sm btn-outline-warning me-1"><i class="bi bi-pencil"></i></a>
-                                <a href="categories.php?delete=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Xóa danh mục này?')"><i class="bi bi-trash"></i></a>
-                            </td>
-                        </tr>
+                            <tr>
+                                <td class="text-muted"><?= $c['id'] ?></td>
+                                <td class="fw-semibold"><?= htmlspecialchars($c['name']) ?></td>
+                                <td class="text-muted small"><?= htmlspecialchars($c['description'] ?? '') ?></td>
+                                <td class="text-center"><span class="badge bg-secondary"><?= $c['product_count'] ?></span></td>
+                                <td class="text-center">
+                                    <a href="categories.php?edit=<?= $c['id'] ?>" class="btn btn-sm btn-outline-warning me-1"><i class="bi bi-pencil"></i></a>
+                                    <a href="categories.php?delete=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Xóa danh mục này?')"><i class="bi bi-trash"></i></a>
+                                </td>
+                            </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
