@@ -104,6 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
         if ($payment === 'online' && ($online_sub === 'vnpay' || $online_sub === 'zalopay')) {
             $conn->begin_transaction();
             try {
+                $order_code   = generateCode('DH');
+                $status       = getOnlinePendingStatus($conn);
                 $discount_id = !empty($_POST['discount_id']) ? (int)$_POST['discount_id'] : null;
                 $discount_amt = isset($_POST['discount_amount']) ? (float)$_POST['discount_amount'] : 0;
                 $final_total  = $total - $discount_amt;

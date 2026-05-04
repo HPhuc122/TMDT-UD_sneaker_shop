@@ -128,7 +128,7 @@ function cancelExpiredPendingOrders($conn, $limit = 100) {
     if (empty($pendingStatuses)) return 0;
 
     $stockColumn = getStockColumnName($conn);
-    if (!$stockColumn) return 0;
+    $hasVarietyStock = hasTableColumn($conn, 'product_varieties', 'stock_quantity');
 
     $statusSql = [];
     foreach ($pendingStatuses as $s) {
@@ -164,9 +164,9 @@ function cancelExpiredPendingOrders($conn, $limit = 100) {
                     $size = (int)($d['size_id'] ?? 0);
                     $color = (int)($d['color_id'] ?? 0);
                     $qty = (int)$d['quantity'];
-                    if ($size > 0 && $color > 0 && hasTableColumn($conn, 'product_varieties', 'stock_quantity')) {
+                    if ($size > 0 && $color > 0 && $hasVarietyStock) {
                         $conn->query("UPDATE product_varieties SET stock_quantity = stock_quantity + $qty WHERE product_id=$pid AND size_id=$size AND color_id=$color");
-                    } else {
+                    } elseif ($stockColumn) {
                         $conn->query("UPDATE products SET {$stockColumn} = {$stockColumn} + $qty WHERE id=$pid");
                     }
                 }
@@ -205,6 +205,8 @@ if (session_name() === USER_SESSION_NAME) {
     kickIfLocked();
 }
 
-// Fallback: auto-cancel expired unpaid orders on normal traffic.
-runExpiredOrderCancellationFallback($conn);
+// Fallback: auto-cancel expired unpaid orders on normal web traffic.
+if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+    runExpiredOrderCancellationFallback($conn);
+}
 ?>

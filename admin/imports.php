@@ -5,6 +5,13 @@ adminHeader('Quản lý nhập hàng');
 
 $msg = '';
 
+if (!hasTableColumn($conn, 'import_details', 'size_id')) {
+    $conn->query("ALTER TABLE import_details ADD COLUMN size_id int(11) DEFAULT NULL AFTER quantity");
+}
+if (!hasTableColumn($conn, 'import_details', 'color_id')) {
+    $conn->query("ALTER TABLE import_details ADD COLUMN color_id int(11) DEFAULT NULL AFTER size_id");
+}
+
 // Complete receipt
 if (isset($_GET['complete'])) {
     $id = (int)$_GET['complete'];
