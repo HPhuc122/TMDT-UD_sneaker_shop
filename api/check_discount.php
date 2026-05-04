@@ -34,13 +34,23 @@ if (!$discount) {
     exit;
 }
 
-// 1. Check Dates
-$now = date('Y-m-d H:i:s');
-if ($discount['start_date'] && $now < $discount['start_date']) {
+// 1. Check Dates (treat start/end as full days)
+$now_ts = time();
+$start_ts = null;
+$end_ts = null;
+if (!empty($discount['start_date'])) {
+    $day = date('Y-m-d', strtotime($discount['start_date']));
+    $start_ts = strtotime($day . ' 00:00:00');
+}
+if (!empty($discount['end_date'])) {
+    $day = date('Y-m-d', strtotime($discount['end_date']));
+    $end_ts = strtotime($day . ' 23:59:59');
+}
+if ($start_ts !== null && $now_ts < $start_ts) {
     echo json_encode(['success' => false, 'message' => 'Mã giảm giá chưa đến thời gian sử dụng.']);
     exit;
 }
-if ($discount['end_date'] && $now > $discount['end_date']) {
+if ($end_ts !== null && $now_ts > $end_ts) {
     echo json_encode(['success' => false, 'message' => 'Mã giảm giá đã hết hạn.']);
     exit;
 }

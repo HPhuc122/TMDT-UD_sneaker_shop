@@ -452,9 +452,9 @@ require_once 'includes/header.php';
                         </div>
                     </div>
                     <button class="btn btn-sm ${isSaved ? 'btn-secondary disabled' : 'btn-outline-primary'} save-coupon-btn" 
-                            data-id="${c.id}" onclick="saveCoupon(this)">
-                        ${isSaved ? 'Đã lưu' : 'Lưu mã'}
-                    </button>
+                                data-id="${c.id}" data-code="${c.code}" onclick="saveCoupon(this)">
+                            ${isSaved ? 'Đã lưu' : 'Lưu mã'}
+                        </button>
                 `;
                 container.appendChild(card);
             });
@@ -476,7 +476,7 @@ require_once 'includes/header.php';
 
     async function saveCoupon(btn) {
         const cid = btn.dataset.id;
-        const code = btn.closest('.card').querySelector('.badge').innerText;
+        const code = btn.dataset.code || (btn.closest('.d-flex')?.querySelector('.badge')?.innerText || '');
 
         if (document.body.classList.contains('logged-in') || <?= isLoggedIn() ? 'true' : 'false' ?>) {
             // Save to DB
