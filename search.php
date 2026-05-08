@@ -8,7 +8,7 @@ $cat_id = isset($_GET['cat_id']) ? (int)$_GET['cat_id'] : 0;
 $min_price = isset($_GET['min_price']) ? (float)$_GET['min_price'] : 0;
 $max_price = isset($_GET['max_price']) ? (float)$_GET['max_price'] : 0;
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$per_page = 12;
+$per_page = 4;
 $offset = ($page - 1) * $per_page;
 
 $where = "p.status='active'";
@@ -122,7 +122,7 @@ $params = http_build_query(array_filter(['q' => $q, 'cat_id' => $cat_id, 'min_pr
                     <ul class="pagination justify-content-center">
                         <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                             <li class="page-item <?= $i == $page ? 'active' : '' ?>">
-                                <a class="page-link" href="?<?= $params ?>&page=<?= $i ?>"><?= $i ?></a>
+                                <a class="page-link" href="search.php?<?= $params ?>&page=<?= $i ?>"><?= $i ?></a>
                             </li>
                         <?php endfor; ?>
                     </ul>

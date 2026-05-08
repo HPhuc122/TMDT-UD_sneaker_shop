@@ -3,11 +3,12 @@
 require_once 'includes/db.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$sql = "SELECT p.*, c.name as cat_name, pv.stock_quantity,
+$sql = "SELECT p.*, c.name as cat_name, SUM(pv.stock_quantity) as total_stock,
         ROUND(p.import_price * (1 + p.profit_rate/100)) as sell_price
         FROM products p JOIN categories c ON p.category_id = c.id
                         JOIN product_varieties pv ON p.id = pv.product_id
-        WHERE p.id=$id AND p.status='active'";
+        WHERE p.id=$id AND p.status='active'
+        GROUP BY p.id";
 $product = $conn->query($sql)->fetch_assoc();
 $varieties = $conn->query("SELECT pv.*, s.size, c.name as color
     FROM product_varieties pv
@@ -30,15 +31,18 @@ $colors = [];
 $sizes_by_color = [];
 
 while ($v = $varieties->fetch_assoc()) {
-    $color = $v['color'];
-    $size  = $v['size'];
+    $color_id = $v['color_id'];
+    $color_name = $v['color'];
+    $size_id = $v['size_id'];
+    $size_name = $v['size'];
 
-    if (!in_array($color, $colors)) {
-        $colors[] = $color;
+    if (!isset($colors[$color_id])) {
+        $colors[$color_id] = $color_name;
     }
 
-    $sizes_by_color[$color][] = [
-        'size' => $size,
+    $sizes_by_color[$color_id][] = [
+        'size_id' => $size_id,
+        'size' => $size_name,
         'stock' => $v['stock_quantity']
     ];
 }
@@ -52,32 +56,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
     }
 
     $qty = max(1, (int)$_POST['quantity']);
-    $selected_size = sanitize($conn, $_POST['selected_size'] ?? '');
+    $selected_size_id = (int)($_POST['selected_size_id'] ?? 0);
+    $selected_color_id = (int)($_POST['selected_color_id'] ?? 0);
 
-    if (empty($selected_size)) {
+    if (empty($selected_size_id)) {
         redirect('product.php?id=' . $id . '&err=size');
     }
+    if (empty($selected_color_id)) {
+        redirect('product.php?id=' . $id . '&err=color');
+    }
 
-    // kiểm tra tồn kho theo size
-    $stock_sql = "SELECT stock_quantity 
-                  FROM product_varieties pv
-                  JOIN sizes s ON s.id = pv.size_id
-                  WHERE pv.product_id = $id AND s.size = '$selected_size'";
+    // Lấy variant theo size_id và color_id
+    $variant_sql = "SELECT pv.*, s.size, c.name as color
+                    FROM product_varieties pv
+                    JOIN sizes s ON s.id = pv.size_id
+                    JOIN colors c ON c.id = pv.color_id
+                    WHERE pv.product_id = $id 
+                      AND pv.size_id = $selected_size_id 
+                      AND pv.color_id = $selected_color_id";
+    $variant = $conn->query($variant_sql)->fetch_assoc();
 
-    $stock_row = $conn->query($stock_sql)->fetch_assoc();
-    $stock = $stock_row['stock_quantity'] ?? 0;
-
-    if ($qty > $stock) {
+    if (!$variant) {
         redirect('product.php?id=' . $id . '&err=stock');
     }
 
+    $stock = (int)$variant['stock_quantity'];
+
     if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
 
-    $cart_key = $id . '_' . $selected_size;
-    $found = false;
+    $cart_key = $id . '_' . $variant['size_id'] . '_' . $variant['color_id'];
+    
+    // Tính tổng số lượng hiện có trong giỏ hàng cho variant này
+    $qty_in_cart = 0;
+    foreach ($_SESSION['cart'] as $item) {
+        if (($item['cart_key'] ?? '') === $cart_key) {
+            $qty_in_cart += (int)$item['qty'];
+        }
+    }
 
+    $total_qty = $qty_in_cart + $qty;
+
+    // Kiểm tra tổng số lượng so với tồn kho
+    if ($total_qty > $stock) {
+        redirect('product.php?id=' . $id . '&err=stock');
+    }
+
+    $found = false;
     foreach ($_SESSION['cart'] as &$item) {
-        if ($item['cart_key'] === $cart_key) {
+        if (($item['cart_key'] ?? '') === $cart_key) {
             $item['qty'] += $qty;
             $found = true;
             break;
@@ -85,16 +111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
     }
 
     if (!$found) {
-        // Lấy variant theo size đã chọn
-        $variant_sql = "SELECT pv.*, s.size, c.name as color
-                        FROM product_varieties pv
-                        JOIN sizes s ON s.id = pv.size_id
-                        JOIN colors c ON c.id = pv.color_id
-                        WHERE pv.product_id = $id AND s.size = '$selected_size'";
-        $variant = $conn->query($variant_sql)->fetch_assoc();
-        if (!$variant) {
-            redirect('product.php?id=' . $id . '&err=stock');
-        }
         $_SESSION['cart'][] = [
             'product_id' => $product['id'],
             'variant_id' => $variant['id'],
@@ -102,15 +118,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
             'price' => $product['sell_price'],
             'qty'   => $qty,
             'image' => $product['image'],
-                
-            // QUAN TRỌNG (checkout cần)
             'size_id'  => $variant['size_id'],
             'color_id' => $variant['color_id'],
-                
-            // Hiển thị trong cart
             'size'  => $variant['size'],
             'color' => $variant['color'],
-            'cart_key' => $id . '_' . $variant['size_id'] . '_' . $variant['color_id']
+            'cart_key' => $cart_key
         ];
     }
 
@@ -125,7 +137,8 @@ if (isset($_GET['added'])) {
     $msg = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Đã thêm vào giỏ hàng' . $sz . '! <a href="cart.php">Xem giỏ hàng</a></div>';
 } elseif (isset($_GET['err'])) {
     if ($_GET['err'] === 'size')  $msg = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Vui lòng chọn size trước khi thêm vào giỏ hàng.</div>';
-    if ($_GET['err'] === 'stock') $msg = '<div class="alert alert-warning">Số lượng tồn kho không đủ!</div>';
+    if ($_GET['err'] === 'color') $msg = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Vui lòng chọn màu trước khi thêm vào giỏ hàng.</div>';
+    if ($_GET['err'] === 'stock') $msg = '<div class="alert alert-warning">Số lượng không hợp lệ hoặc vượt quá tồn kho hiện có!</div>';
 }
 
 // NOW safe to output HTML
@@ -190,12 +203,13 @@ require_once 'includes/header.php';
                         </span>
 
                         <div class="d-flex gap-2 mt-2">
-                            <?php foreach ($colors as $c): ?>
+                            <?php foreach ($colors as $cid => $cname): ?>
                                 <button type="button"
                                     class="btn btn-outline-dark color-btn"
-                                    data-color="<?= htmlspecialchars($c) ?>"
+                                    data-color-id="<?= $cid ?>"
+                                    data-color="<?= htmlspecialchars($cname) ?>"
                                     onclick="selectColor(this)">
-                                    <?= htmlspecialchars($c) ?>
+                                    <?= htmlspecialchars($cname) ?>
                                 </button>
                             <?php endforeach; ?>
                         </div>
@@ -209,7 +223,7 @@ require_once 'includes/header.php';
                     <div class="fs-1 fw-bold" style="color:#ff6b35"><?= formatPrice($product['sell_price']) ?></div>
                 </div>
                 <!-- Stock status -->
-                <?php if (!empty($sizes_by_color)): ?>
+                <?php if ($product['total_stock'] > 0): ?>
                     <p class="mb-3">
                         <span id="stockLabel"
                             class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
@@ -239,7 +253,7 @@ require_once 'includes/header.php';
                     <div id="couponList" class="d-flex flex-column gap-2"></div>
                 </div>
 
-                <?php if ($product['stock_quantity'] > 0): ?>
+                <?php if ($product['total_stock'] > 0): ?>
                     <form method="POST" id="addCartForm">
                         <!-- Size selector -->
                         <div class="mb-3">
@@ -249,8 +263,8 @@ require_once 'includes/header.php';
 
                             <div id="sizeContainer" class="d-flex flex-wrap gap-2 mt-2"></div>
 
-                            <input type="hidden" name="selected_size" id="selectedSizeInput">
-                            <input type="hidden" name="selected_color" id="selectedColorInput">
+                            <input type="hidden" name="selected_size_id" id="selectedSizeIdInput">
+                            <input type="hidden" name="selected_color_id" id="selectedColorIdInput">
                         </div>
 
                         <!-- Quantity -->
@@ -258,7 +272,7 @@ require_once 'includes/header.php';
                             <label class="fw-semibold">Số lượng:</label>
                             <div class="input-group" style="width:140px">
                                 <button type="button" class="btn btn-outline-secondary" onclick="changeQty(-1)">−</button>
-                                <input type="number" id="qty" name="quantity" class="form-control text-center fw-bold" value="1" min="1" max="<?= $product['stock_quantity'] ?>">
+                                <input type="number" id="qty" name="quantity" class="form-control text-center fw-bold" value="1" min="1" max="<?= $product['total_stock'] ?>">
                                 <button type="button" class="btn btn-outline-secondary" onclick="changeQty(1)">+</button>
                             </div>
                         </div>
@@ -377,14 +391,17 @@ require_once 'includes/header.php';
         btn.classList.remove('btn-outline-dark');
         btn.classList.add('btn-dark');
 
-        const color = btn.dataset.color;
-        document.getElementById('selectedColor').value = color;
+        const colorId = btn.dataset.colorId;
+        
+        if (document.getElementById('selectedColorIdInput')) {
+            document.getElementById('selectedColorIdInput').value = colorId;
+        }
 
         // render size theo màu
         const container = document.getElementById('sizeContainer');
         container.innerHTML = '';
 
-        sizesByColor[color].forEach(s => {
+        sizesByColor[colorId].forEach(s => {
             const el = document.createElement('button');
             el.type = 'button';
             el.className = 'btn btn-outline-secondary';
@@ -406,17 +423,30 @@ require_once 'includes/header.php';
                 this.classList.remove('btn-outline-secondary');
                 this.classList.add('btn-dark');
 
-                document.getElementById('selectedSizeInput').value = s.size;
+                if (document.getElementById('selectedSizeIdInput')) {
+                    document.getElementById('selectedSizeIdInput').value = s.size_id;
+                }
 
                 // Cập nhật tồn kho theo size
                 const stockLabel = document.getElementById('stockLabel');
+                const qtyInput = document.getElementById('qty');
 
                 if (s.stock > 0) {
                     stockLabel.innerHTML =
                         '<i class="bi bi-check-circle-fill me-1"></i> Còn hàng · ' + s.stock + ' đôi';
+                    if (qtyInput) {
+                        qtyInput.max = s.stock;
+                        if (parseInt(qtyInput.value) > s.stock) {
+                            qtyInput.value = s.stock;
+                        }
+                    }
                 } else {
                     stockLabel.innerHTML =
                         '<i class="bi bi-x-circle-fill me-1"></i> Hết hàng';
+                    if (qtyInput) {
+                        qtyInput.max = 0;
+                        qtyInput.value = 1;
+                    }
                 }
             };
 

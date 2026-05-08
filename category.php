@@ -3,7 +3,7 @@ require_once 'includes/header.php';
 
 $cat_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$per_page = 12;
+$per_page = 8;
 $offset = ($page - 1) * $per_page;
 
 $category = null;
@@ -96,6 +96,19 @@ $pageTitle = $category ? $category['name'] : 'Tất cả sản phẩm';
             </div>
         <?php endwhile; ?>
     </div>
+
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+        <nav class="mt-5">
+            <ul class="pagination justify-content-center">
+                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                    <li class="page-item <?= $i == $page ? 'active' : '' ?>">
+                        <a class="page-link" href="category.php?id=<?= $cat_id ?>&page=<?= $i ?>"><?= $i ?></a>
+                    </li>
+                <?php endfor; ?>
+            </ul>
+        </nav>
+    <?php endif; ?>
 
 </div>
 
