@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             $ruleError = 'Không thể chuyển đơn sang trạng thái Chờ thanh toán.';
         }
         // YC1: đơn awaiting_payment chỉ được chuyển sang cancelled
-        elseif ($oldStatus === 'awaiting_payment' && $newStatus !== 'cancelled') {
+        elseif (in_array($oldStatus, ['awaiting_payment','pending_payment']) && $newStatus !== 'cancelled') {
             $ruleError = 'Đơn đang chờ thanh toán chỉ có thể chuyển sang Đã huỷ.';
         }
         // YC4: đơn đã giao không thể đổi sang bất kỳ trạng thái nào
@@ -60,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     }
 }
 
-$statusLabels = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
-$statusColors = ['awaiting_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabels = ['awaiting_payment' => 'Chờ thanh toán', 'pending_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
+$statusColors = ['awaiting_payment' => 'secondary', 'pending_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
 
 // Filters
 $filter_status = isset($_GET['status'])    ? sanitize($conn, $_GET['status']) : '';
@@ -186,7 +186,7 @@ if ($detail_id) {
                 $allowedTransitions = [];
             }
             // YC1: chờ thanh toán → chỉ được huỷ
-            elseif ($curStatus === 'awaiting_payment') {
+            elseif (in_array($curStatus, ['awaiting_payment','pending_payment'])) {
                 $allowedTransitions = ['cancelled'];
             }
             // YC3: online + confirmed → chỉ được giao
@@ -197,10 +197,17 @@ if ($detail_id) {
             elseif ($curStatus === 'cancelled') {
                 $allowedTransitions = [];
             }
-            // COD confirmed, pending → các trạng thái hợp lý (không bao gồm awaiting_payment — YC2)
+            // pending (chờ xử lý) → chỉ được xác nhận hoặc huỷ, KHÔNG nhảy sang đã giao
+            elseif ($curStatus === 'pending') {
+                $allowedTransitions = ['confirmed', 'cancelled'];
+            }
+            // confirmed (COD) → có thể giao hoặc huỷ
+            elseif ($curStatus === 'confirmed') {
+                $allowedTransitions = ['delivered', 'cancelled'];
+            }
+            // Các trạng thái khác (phòng thủ)
             else {
-                $allStatuses = ['pending', 'confirmed', 'delivered', 'cancelled'];
-                $allowedTransitions = array_filter($allStatuses, fn($s) => $s !== $curStatus);
+                $allowedTransitions = ['cancelled'];
             }
             ?>
             <?php if (empty($allowedTransitions)): ?>

@@ -397,6 +397,10 @@ require_once 'includes/header.php';
             document.getElementById('selectedColorIdInput').value = colorId;
         }
 
+        // Reset size đã chọn — bắt buộc chọn lại size khi đổi màu
+        const sizeIdInput = document.getElementById('selectedSizeIdInput');
+        if (sizeIdInput) sizeIdInput.value = '';
+
         // render size theo màu
         const container = document.getElementById('sizeContainer');
         container.innerHTML = '';

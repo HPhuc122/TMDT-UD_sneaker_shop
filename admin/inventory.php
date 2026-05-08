@@ -53,7 +53,7 @@ $ord_to   = isset($_GET['ord_to'])   ? sanitize($conn, $_GET['ord_to'])   : date
 
 $ord_stats = $conn->query("SELECT
     COUNT(*) as tong_don,
-    SUM(CASE WHEN status IN ('confirmed','delivered') THEN 1 ELSE 0 END) as thanh_cong,
+    SUM(CASE WHEN (payment_method='online' AND status IN ('confirmed','delivered')) OR (payment_method!='online' AND status='delivered') THEN 1 ELSE 0 END) as thanh_cong,
     SUM(CASE WHEN status = 'pending' AND payment_method != 'online' THEN 1 ELSE 0 END) as cho_xu_ly_cod,
     SUM(CASE WHEN status IN ('awaiting_payment','pending_payment') THEN 1 ELSE 0 END) as cho_thanh_toan,
     SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as da_huy
@@ -71,7 +71,7 @@ $rev_to   = isset($_GET['rev_to'])   ? sanitize($conn, $_GET['rev_to'])   : date
 
 $rev_stats = $conn->query("SELECT
     SUM(total_amount) as tong_gia_tri,
-    SUM(CASE WHEN status IN ('confirmed','delivered') THEN total_amount ELSE 0 END) as da_thanh_toan,
+    SUM(CASE WHEN (payment_method='online' AND status IN ('confirmed','delivered')) OR (payment_method!='online' AND status='delivered') THEN total_amount ELSE 0 END) as da_thanh_toan,
     SUM(CASE WHEN status = 'pending' AND payment_method != 'online' THEN total_amount ELSE 0 END) as cod_cho_xu_ly,
     SUM(CASE WHEN status IN ('awaiting_payment','pending_payment') THEN total_amount ELSE 0 END) as cho_thanh_toan,
     SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END) as da_huy
@@ -413,7 +413,7 @@ elseif ($tab === 'revenue'): ?>
                     <?php
                     $tong = max(1, $rev_stats['tong_gia_tri'] ?? 1);
                     $rows = [
-                        ['success', 'Đã thanh toán thành công', 'Đơn đã xác nhận + đã giao', $rev_stats['da_thanh_toan'] ?? 0],
+                        ['success', 'Đã thanh toán thành công', 'Online: Đã xác nhận/giao  •  COD: Đã giao', $rev_stats['da_thanh_toan'] ?? 0],
                         ['warning', 'COD chờ xử lý', 'Đơn COD đang ở trạng thái chờ xử lý', $rev_stats['cod_cho_xu_ly'] ?? 0],
                         ['secondary', 'Online chờ thanh toán', 'Đơn online chưa thanh toán', $rev_stats['cho_thanh_toan'] ?? 0],
                         ['danger', 'Đã hủy', 'Tổng giá trị đơn bị hủy', $rev_stats['da_huy'] ?? 0],

@@ -24,8 +24,8 @@ $low_stock = $conn->query("SELECT p.*, SUM(pv.stock_quantity) AS total_stock
 // Recent orders
 $recent_orders = $conn->query("SELECT o.*, u.full_name FROM orders o JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC LIMIT 8");
 
-$statusColor = ['awaiting_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
-$statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
+$statusColor = ['awaiting_payment' => 'secondary', 'pending_payment' => 'secondary', 'pending' => 'warning', 'confirmed' => 'info', 'delivered' => 'success', 'cancelled' => 'danger'];
+$statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending_payment' => 'Chờ thanh toán', 'pending' => 'Chờ xử lý', 'confirmed' => 'Đã xác nhận', 'delivered' => 'Đã giao', 'cancelled' => 'Đã huỷ'];
 ?>
 
 <div class="row g-4 mb-4">
@@ -131,7 +131,7 @@ $statusLabel = ['awaiting_payment' => 'Chờ thanh toán', 'pending' => 'Chờ x
                 <?php while ($p = $low_stock->fetch_assoc()): ?>
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="small"><?= htmlspecialchars($p['name']) ?></span>
-                        <span class="badge bg-<?= $p['stock_quantity'] == 0 ? 'danger' : 'warning' ?>"><?= $p['stock_quantity'] ?> còn</span>
+                        <span class="badge bg-<?= $p['total_stock'] == 0 ? 'danger' : 'warning' ?>"><?= $p['total_stock'] ?> còn</span>
                     </div>
                 <?php endwhile; ?>
                 <a href="inventory.php" class="list-group-item list-group-item-action text-center text-primary small">Xem báo cáo tồn kho →</a>

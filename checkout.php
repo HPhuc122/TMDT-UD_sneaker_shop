@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
         }
         redirect('vnpay/vnpay_create_payment.php?order_id=' . $repay_id);
     } else {
-        // COD hoặc chuyển khoản: tồn kho đã giữ sẵn từ lúc tạo đơn online
+        // COD: tồn kho đã giữ sẵn từ lúc tạo đơn online
         $pm_safe = $conn->real_escape_string($payment);
         $setSql  = "payment_method='$pm_safe', status='pending'";
         if ($hasPaymentStatusCol)   $setSql .= ", payment_status=NULL";
@@ -281,14 +281,9 @@ require_once 'includes/header.php';
                         <div class="small text-muted">
                             <p class="mb-1"><i class="bi bi-person me-1"></i><?= htmlspecialchars($ord['receiver_name']) ?> · <?= htmlspecialchars($ord['receiver_phone']) ?></p>
                             <p class="mb-1"><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($ord['shipping_address'] . ', ' . $ord['ward'] . ', ' . $ord['district'] . ', ' . $ord['city']) ?></p>
-                            <?php $pm = ['cash' => 'Tiền mặt (COD)', 'transfer' => 'Chuyển khoản', 'online' => 'Trực tuyến']; ?>
+                            <?php $pm = ['cash' => 'Tiền mặt (COD)', 'online' => 'Trực tuyến']; ?>
                             <p class="mb-0"><i class="bi bi-credit-card me-1"></i><?= $pm[$ord['payment_method']] ?? $ord['payment_method'] ?></p>
-                            <?php if ($ord['payment_method'] === 'transfer'): ?>
-                                <div class="alert alert-info mt-2 py-2 small mb-0">
-                                    <strong>Chuyển khoản:</strong> Vietcombank · STK: 1234567890 · Chủ TK: SNEAKER SHOP<br>
-                                    Nội dung: <strong><?= htmlspecialchars($ord['order_code']) ?></strong>
-                                </div>
-                            <?php endif; ?>
+
                         </div>
                     </div>
                 </div>
@@ -328,13 +323,7 @@ require_once 'includes/header.php';
                                 <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
                                 <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
                             </div>
-                            <div class="form-check mb-3 p-3 border rounded">
-                                <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
-                                <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
-                            </div>
-                            <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
-                                Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
-                            </div>
+
                             <div class="form-check p-3 border rounded">
                                 <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
                                 <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
@@ -473,13 +462,7 @@ require_once 'includes/header.php';
                                 <input class="form-check-input" type="radio" name="payment_method" id="cash" value="cash" checked onchange="showPayment('cash')">
                                 <label class="form-check-label fw-semibold" for="cash"><i class="bi bi-cash-coin me-2 text-success"></i>Tiền mặt khi nhận hàng (COD)</label>
                             </div>
-                            <div class="form-check mb-3 p-3 border rounded">
-                                <input class="form-check-input" type="radio" name="payment_method" id="transfer" value="transfer" onchange="showPayment('transfer')">
-                                <label class="form-check-label fw-semibold" for="transfer"><i class="bi bi-bank me-2 text-primary"></i>Chuyển khoản ngân hàng</label>
-                            </div>
-                            <div id="transferInfo" class="alert alert-info small py-2 mb-3" style="display:none">
-                                Vietcombank · STK: <strong>1234567890</strong> · Chủ TK: SNEAKER SHOP
-                            </div>
+
                             <div class="form-check p-3 border rounded">
                                 <input class="form-check-input" type="radio" name="payment_method" id="online" value="online" onchange="showPayment('online')">
                                 <label class="form-check-label fw-semibold" for="online"><i class="bi bi-phone me-2 text-warning"></i>Thanh toán trực tuyến</label>
@@ -584,9 +567,7 @@ require_once 'includes/header.php';
     }
 
     function showPayment(m) {
-        const transferInfo = document.getElementById('transferInfo');
         const onlineSubOptions = document.getElementById('onlineSubOptions');
-        if (transferInfo) transferInfo.style.display = m === 'transfer' ? 'block' : 'none';
         if (onlineSubOptions) onlineSubOptions.style.display = m === 'online' ? 'block' : 'none';
     }
 

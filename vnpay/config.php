@@ -10,9 +10,9 @@ $vnp_Url         = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"; // URL 
 // ==================== URL NGROK TĨNH (ĐÃ SỬA) ====================
 // Domain tĩnh của bạn: rosana-cucurbitaceous-pei.ngrok-free.dev
 
-$vnp_Returnurl   = "https://rosana-cucurbitaceous-pei.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_return.php";
+$vnp_Returnurl   = "https://uninfusive-audry-reptilelike.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_return.php";
 
-$vnp_IpnUrl      = "https://rosana-cucurbitaceous-pei.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_ipn.php";
+$vnp_IpnUrl      = "https://uninfusive-audry-reptilelike.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_ipn.php";
 
 // =================================================================
 
