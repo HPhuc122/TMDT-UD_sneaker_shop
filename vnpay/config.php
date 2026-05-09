@@ -3,16 +3,15 @@
 
 date_default_timezone_set('Asia/Ho_Chi_Minh');
 
-$vnp_TmnCode     = "GYLFMILV";                                           // Terminal ID của bạn
-$vnp_HashSecret  = "SLBNCWQ9VZ6CRMGW62JRR2CZBJH49BYR";                   // Secret Key
-$vnp_Url         = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"; // URL thanh toán Sandbox
+$vnp_TmnCode     = getenv('VNPAY_TMN_CODE') ?: "GYLFMILV";
+$vnp_HashSecret  = getenv('VNPAY_HASH_SECRET') ?: "SLBNCWQ9VZ6CRMGW62JRR2CZBJH49BYR";
+$vnp_Url         = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
 
-// ==================== URL NGROK TĨNH (ĐÃ SỬA) ====================
-// Domain tĩnh của bạn: rosana-cucurbitaceous-pei.ngrok-free.dev
+// Lấy base URL từ môi trường (Ví dụ: https://my-app.railway.app)
+$app_url = getenv('APP_URL') ?: "http://localhost/TMDT-UD_sneaker_shop";
 
-$vnp_Returnurl   = "https://uninfusive-audry-reptilelike.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_return.php";
-
-$vnp_IpnUrl      = "https://uninfusive-audry-reptilelike.ngrok-free.dev/TMDT-UD_sneaker_shop/vnpay/vnpay_ipn.php";
+$vnp_Returnurl   = $app_url . "/vnpay/vnpay_return.php";
+$vnp_IpnUrl      = $app_url . "/vnpay/vnpay_ipn.php";
 
 // =================================================================
 
