@@ -4,6 +4,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_name('sneaker_admin_sess');
     session_start();
+    ob_start();
 }
 require_once '../includes/db.php';
 // db.php will see session already active and skip its own session_start()
