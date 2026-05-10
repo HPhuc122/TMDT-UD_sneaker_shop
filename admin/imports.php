@@ -14,7 +14,7 @@ if (!hasTableColumn($conn, 'import_details', 'color_id')) {
 
 // Complete receipt
 if (isset($_GET['complete'])) {
-    $id = (int)$_GET['complete'];
+    $id = (int) $_GET['complete'];
     $receipt = $conn->query("SELECT * FROM import_receipts WHERE id=$id AND status='pending'")->fetch_assoc();
     if ($receipt) {
         // ── Bước 1: Gom nhóm tất cả dòng nhập theo product_id ─────────────
@@ -22,21 +22,22 @@ if (isset($_GET['complete'])) {
         $details = $conn->query("SELECT * FROM import_details WHERE receipt_id=$id");
         $import_map = []; // [product_id => ['total_qty'=>x, 'total_value'=>y, 'rows'=>[...]]]
         while ($d = $details->fetch_assoc()) {
-            $pid = (int)$d['product_id'];
-            if (!isset($import_map[$pid])) $import_map[$pid] = ['total_qty'=>0, 'total_value'=>0, 'rows'=>[]];
-            $import_map[$pid]['total_qty']   += (int)$d['quantity'];
-            $import_map[$pid]['total_value'] += (int)$d['quantity'] * (float)$d['import_price'];
-            $import_map[$pid]['rows'][]       = $d;
+            $pid = (int) $d['product_id'];
+            if (!isset($import_map[$pid]))
+                $import_map[$pid] = ['total_qty' => 0, 'total_value' => 0, 'rows' => []];
+            $import_map[$pid]['total_qty'] += (int) $d['quantity'];
+            $import_map[$pid]['total_value'] += (int) $d['quantity'] * (float) $d['import_price'];
+            $import_map[$pid]['rows'][] = $d;
         }
 
         foreach ($import_map as $pid => $imp) {
             // ── Bước 2: Lấy giá vốn bình quân HIỆN TẠI từ products.import_price
             //    và tổng tồn kho hiện tại từ product_varieties
             $prod = $conn->query("SELECT import_price FROM products WHERE id=$pid")->fetch_assoc();
-            $cur_price = $prod ? (float)$prod['import_price'] : 0;
+            $cur_price = $prod ? (float) $prod['import_price'] : 0;
 
             $stock_row = $conn->query("SELECT COALESCE(SUM(stock_quantity),0) as total_qty FROM product_varieties WHERE product_id=$pid")->fetch_assoc();
-            $cur_total_qty = (int)$stock_row['total_qty'];
+            $cur_total_qty = (int) $stock_row['total_qty'];
 
             // ── Bước 3: Công thức bình quân gia quyền
             //    = (tồn hiện tại * giá vốn hiện tại + tổng nhập mới * giá nhập mới) / (tồn + nhập)
@@ -54,9 +55,9 @@ if (isset($_GET['complete'])) {
 
             // ── Bước 6: Cộng tồn kho theo từng dòng size/màu
             foreach ($imp['rows'] as $d) {
-                $size_id  = (int)$d['size_id'];
-                $color_id = (int)$d['color_id'];
-                $new_qty  = (int)$d['quantity'];
+                $size_id = (int) $d['size_id'];
+                $color_id = (int) $d['color_id'];
+                $new_qty = (int) $d['quantity'];
                 $exists = $conn->query("SELECT id FROM product_varieties WHERE product_id=$pid AND size_id=$size_id AND color_id=$color_id")->fetch_assoc();
                 if ($exists) {
                     $conn->query("UPDATE product_varieties SET stock_quantity=stock_quantity+$new_qty WHERE product_id=$pid AND size_id=$size_id AND color_id=$color_id");
@@ -73,7 +74,7 @@ if (isset($_GET['complete'])) {
 
 // Delete receipt (only pending)
 if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
+    $id = (int) $_GET['delete'];
     $receipt = $conn->query("SELECT * FROM import_receipts WHERE id=$id AND status='pending'")->fetch_assoc();
     if ($receipt) {
         $conn->query("DELETE FROM import_receipts WHERE id=$id");
@@ -84,9 +85,9 @@ if (isset($_GET['delete'])) {
 // Create new receipt
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'create') {
-        $date  = sanitize($conn, $_POST['import_date'] ?? date('Y-m-d'));
+        $date = sanitize($conn, $_POST['import_date'] ?? date('Y-m-d'));
         $notes = sanitize($conn, $_POST['notes'] ?? '');
-        $code  = generateCode('PN');
+        $code = generateCode('PN');
         $user_id = $_SESSION['user_id'];
         $conn->query("INSERT INTO import_receipts (receipt_code,import_date,notes,created_by) VALUES ('$code','$date','$notes',$user_id)");
         $rid = $conn->insert_id;
@@ -94,18 +95,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($_POST['action'] === 'add_item') {
-        $rid      = (int)$_POST['receipt_id'];
-        $pid      = (int)$_POST['product_id'];
-        $qty      = (int)$_POST['quantity'];
-        $color_id = (int)$_POST['color_id'];
-        $size_id  = (int)$_POST['size_id'];
-        $price    = (float)$_POST['import_price'];
+        $rid = (int) $_POST['receipt_id'];
+        $pid = (int) $_POST['product_id'];
+        $qty = (int) $_POST['quantity'];
+        $color_id = (int) $_POST['color_id'];
+        $size_id = (int) $_POST['size_id'];
+        $price = (float) $_POST['import_price'];
 
         if ($pid && $qty > 0 && $price > 0) {
             // Nếu sản phẩm này đã có dòng nào trong phiếu → khoá giá bằng giá dòng đầu tiên
             $first_row = $conn->query("SELECT import_price FROM import_details WHERE receipt_id=$rid AND product_id=$pid LIMIT 1")->fetch_assoc();
             if ($first_row) {
-                $price = (float)$first_row['import_price']; // Khoá cứng giá bình quân cùng mã
+                $price = (float) $first_row['import_price']; // Khoá cứng giá bình quân cùng mã
             }
 
             // Kiểm tra size+màu đã tồn tại chưa
@@ -123,28 +124,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($_POST['action'] === 'remove_item') {
-        $did = (int)$_POST['detail_id'];
+        $did = (int) $_POST['detail_id'];
         $conn->query("DELETE FROM import_details WHERE id=$did");
         $msg = '<div class="alert alert-info">Đã xóa dòng khỏi phiếu nhập.</div>';
     }
 }
 
 // Edit view
-$edit_id = isset($_GET['edit']) ? (int)$_GET['edit'] : 0;
+$edit_id = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $edit_receipt = null;
 if ($edit_id) {
     $edit_receipt = $conn->query("SELECT * FROM import_receipts WHERE id=$edit_id")->fetch_assoc();
 }
 
 // List receipts with search + pagination
-$search_i   = isset($_GET['search']) ? sanitize($conn, $_GET['search']) : '';
-$filter_ist = isset($_GET['ist'])    ? sanitize($conn, $_GET['ist']) : '';
-$page_i     = max(1, (int)($_GET['page'] ?? 1));
+$search_i = isset($_GET['search']) ? sanitize($conn, $_GET['search']) : '';
+$filter_ist = isset($_GET['ist']) ? sanitize($conn, $_GET['ist']) : '';
+$page_i = max(1, (int) ($_GET['page'] ?? 1));
 $per_page_i = 12;
-$where_i    = "1=1";
-if ($search_i)   $where_i .= " AND (ir.receipt_code LIKE '%$search_i%' OR u.full_name LIKE '%$search_i%')";
-if ($filter_ist) $where_i .= " AND ir.status='$filter_ist'";
-$total_i  = $conn->query("SELECT COUNT(*) as c FROM import_receipts ir JOIN users u ON ir.created_by=u.id WHERE $where_i")->fetch_assoc()['c'];
+$where_i = "1=1";
+if ($search_i)
+    $where_i .= " AND (ir.receipt_code LIKE '%$search_i%' OR u.full_name LIKE '%$search_i%')";
+if ($filter_ist)
+    $where_i .= " AND ir.status='$filter_ist'";
+$total_i = $conn->query("SELECT COUNT(*) as c FROM import_receipts ir JOIN users u ON ir.created_by=u.id WHERE $where_i")->fetch_assoc()['c'];
 $offset_i = ($page_i - 1) * $per_page_i;
 $receipts = $conn->query("SELECT ir.*, u.full_name FROM import_receipts ir JOIN users u ON ir.created_by=u.id WHERE $where_i ORDER BY ir.created_at DESC LIMIT $per_page_i OFFSET $offset_i");
 $params_i = array_filter(['search' => $search_i, 'ist' => $filter_ist]);
@@ -175,10 +178,12 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                     <input type="hidden" name="receipt_id" value="<?= $edit_receipt['id'] ?>">
                     <div class="col-md-4">
                         <label class="form-label">Sản phẩm</label>
-                        <select name="product_id" id="sel_product_id" class="form-select" required onchange="autoFillPrice(this)">
+                        <select name="product_id" id="sel_product_id" class="form-select" required
+                            onchange="autoFillPrice(this)">
                             <option value="">-- Chọn sản phẩm --</option>
                             <?php while ($p = $products_list->fetch_assoc()): ?>
-                                <option value="<?= $p['id'] ?>">[<?= htmlspecialchars($p['code']) ?>] <?= htmlspecialchars($p['name']) ?></option>
+                                <option value="<?= $p['id'] ?>">[<?= htmlspecialchars($p['code']) ?>]
+                                    <?= htmlspecialchars($p['name']) ?></option>
                             <?php endwhile; ?>
                         </select>
                     </div>
@@ -193,7 +198,7 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                             <?php
                             $colors = $conn->query("SELECT * FROM colors");
                             while ($c = $colors->fetch_assoc()):
-                            ?>
+                                ?>
                                 <option value="<?= $c['id'] ?>"><?= $c['name'] ?></option>
                             <?php endwhile; ?>
                         </select>
@@ -205,14 +210,15 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                             <?php
                             $sizes = $conn->query("SELECT * FROM sizes");
                             while ($s = $sizes->fetch_assoc()):
-                            ?>
+                                ?>
                                 <option value="<?= $s['id'] ?>"><?= $s['size'] ?></option>
                             <?php endwhile; ?>
                         </select>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Giá nhập (₫)</label>
-                        <input type="number" name="import_price" id="inp_import_price" class="form-control" min="0" step="1000" required>
+                        <input type="number" name="import_price" id="inp_import_price" class="form-control" min="0" step="1000"
+                            required>
                     </div>
                     <div class="col-md-1 d-flex align-items-end">
                         <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus"></i></button>
@@ -240,7 +246,7 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                     <?php while ($item = $items->fetch_assoc()):
                         $line = $item['quantity'] * $item['import_price'];
                         $subtotal += $line;
-                    ?>
+                        ?>
                         <tr>
                             <td>[<?= htmlspecialchars($item['code']) ?>] <?= htmlspecialchars($item['name']) ?></td>
                             <td class="text-center"><?= $item['quantity'] ?></td>
@@ -254,7 +260,8 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                                         <input type="hidden" name="action" value="remove_item">
                                         <input type="hidden" name="receipt_id" value="<?= $edit_receipt['id'] ?>">
                                         <input type="hidden" name="detail_id" value="<?= $item['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i
+                                                class="bi bi-trash"></i></button>
                                     </form>
                                 </td>
                             <?php endif; ?>
@@ -263,14 +270,16 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                     <tr>
                         <td colspan="5" class="text-end fw-bold">Tổng giá trị nhập:</td>
                         <td class="text-end fw-bold text-primary"><?= formatPrice($subtotal) ?></td>
-                        <?php if ($edit_receipt['status'] === 'pending'): ?><td></td><?php endif; ?>
+                        <?php if ($edit_receipt['status'] === 'pending'): ?>
+                            <td></td><?php endif; ?>
                     </tr>
                 </tbody>
             </table>
 
             <?php if ($edit_receipt['status'] === 'pending'): ?>
                 <div class="text-end">
-                    <a href="imports.php?complete=<?= $edit_receipt['id'] ?>" class="btn btn-success" onclick="return confirm('Hoàn thành phiếu nhập? Tồn kho sẽ được cập nhật.')">
+                    <a href="imports.php?complete=<?= $edit_receipt['id'] ?>" class="btn btn-success"
+                        onclick="return confirm('Hoàn thành phiếu nhập? Tồn kho sẽ được cập nhật.')">
                         <i class="bi bi-check-circle me-2"></i>Hoàn thành phiếu nhập
                     </a>
                 </div>
@@ -312,11 +321,13 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white border-0">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <strong><i class="bi bi-list-ul me-2"></i>Danh sách phiếu nhập <span class="badge bg-secondary"><?= $total_i ?></span></strong>
+            <strong><i class="bi bi-list-ul me-2"></i>Danh sách phiếu nhập <span
+                    class="badge bg-secondary"><?= $total_i ?></span></strong>
             <form method="GET" class="d-flex gap-2 flex-wrap">
                 <div class="input-group input-group-sm" style="width:220px">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" name="search" class="form-control" placeholder="Tìm mã phiếu, người tạo..." value="<?= htmlspecialchars($search_i) ?>">
+                    <input type="text" name="search" class="form-control" placeholder="Tìm mã phiếu, người tạo..."
+                        value="<?= htmlspecialchars($search_i) ?>">
                 </div>
                 <select name="ist" class="form-select form-select-sm" style="width:150px" onchange="this.form.submit()">
                     <option value="">Tất cả trạng thái</option>
@@ -359,11 +370,15 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
                                 <?= $r['status'] === 'completed' ? 'Đã hoàn thành' : 'Chưa xong' ?>
                             </span>
                         </td>
-                        <td class="text-center">
-                            <a href="imports.php?edit=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary me-1" title="Xem/Sửa"><i class="bi bi-eye"></i></a>
-                            <?php if ($r['status'] === 'pending'): ?>
-                                <a href="imports.php?delete=<?= $r['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Xóa phiếu nhập này?')"><i class="bi bi-trash"></i></a>
-                            <?php endif; ?>
+                        <td class="text-center" style="white-space:nowrap;min-width:80px">
+                            <div class="d-flex gap-1 justify-content-center flex-nowrap">
+                                <a href="imports.php?edit=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary"
+                                    title="Xem/Sửa"><i class="bi bi-eye"></i></a>
+                                <?php if ($r['status'] === 'pending'): ?>
+                                    <a href="imports.php?delete=<?= $r['id'] ?>" class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Xóa phiếu nhập này?')"><i class="bi bi-trash"></i></a>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                 <?php endwhile; ?>
@@ -373,7 +388,9 @@ $products_list = $conn->query("SELECT id,code,name FROM products WHERE status='a
     <?php if ($total_i > $per_page_i): ?>
         <div class="card-footer bg-white">
             <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted">Hiển thị <?= min($offset_i + 1, $total_i) ?>–<?= min($offset_i + $per_page_i, $total_i) ?> / <?= $total_i ?> phiếu nhập</small>
+                <small class="text-muted">Hiển thị
+                    <?= min($offset_i + 1, $total_i) ?>–<?= min($offset_i + $per_page_i, $total_i) ?> / <?= $total_i ?>
+                    phiếu nhập</small>
                 <?= renderPagination($total_i, $page_i, $per_page_i, $params_i) ?>
             </div>
         </div>
@@ -386,32 +403,32 @@ if ($edit_receipt):
     $price_map_rows = $conn->query("SELECT DISTINCT product_id, import_price FROM import_details WHERE receipt_id={$edit_receipt['id']}");
     $price_map = [];
     while ($pm = $price_map_rows->fetch_assoc()) {
-        $price_map[(int)$pm['product_id']] = (float)$pm['import_price'];
+        $price_map[(int) $pm['product_id']] = (float) $pm['import_price'];
     }
-?>
-<script>
-const priceMap = <?= json_encode($price_map) ?>;
-function autoFillPrice(sel) {
-    const pid = parseInt(sel.value);
-    const inp = document.getElementById('inp_import_price');
-    if (!inp) return;
-    if (priceMap[pid] !== undefined) {
-        inp.value = priceMap[pid];
-        inp.readOnly = true;
-        inp.title = 'Giá nhập đã khoá theo dòng đầu tiên của sản phẩm này trong phiếu';
-        inp.style.background = '#f0f4f8';
-    } else {
-        inp.readOnly = false;
-        inp.title = '';
-        inp.style.background = '';
-    }
-}
-// Chạy lần đầu phòng trường hợp form giữ giá trị cũ
-document.addEventListener('DOMContentLoaded', function() {
-    const sel = document.getElementById('sel_product_id');
-    if (sel) autoFillPrice(sel);
-});
-</script>
+    ?>
+    <script>
+        const priceMap = <?= json_encode($price_map) ?>;
+        function autoFillPrice(sel) {
+            const pid = parseInt(sel.value);
+            const inp = document.getElementById('inp_import_price');
+            if (!inp) return;
+            if (priceMap[pid] !== undefined) {
+                inp.value = priceMap[pid];
+                inp.readOnly = true;
+                inp.title = 'Giá nhập đã khoá theo dòng đầu tiên của sản phẩm này trong phiếu';
+                inp.style.background = '#f0f4f8';
+            } else {
+                inp.readOnly = false;
+                inp.title = '';
+                inp.style.background = '';
+            }
+        }
+        // Chạy lần đầu phòng trường hợp form giữ giá trị cũ
+        document.addEventListener('DOMContentLoaded', function () {
+            const sel = document.getElementById('sel_product_id');
+            if (sel) autoFillPrice(sel);
+        });
+    </script>
 <?php endif; ?>
 
 <?php adminFooter(); ?>

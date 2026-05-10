@@ -33,7 +33,7 @@ $total = $stmt->get_result()->fetch_assoc()['cnt'];
 
 $total_pages = ceil($total / $per_page);
 
-$sql = " SELECT p.*, c.name as cat_name, MIN(pv.price) as sell_price, SUM(pv.stock_quantity) as total_stock
+$sql = " SELECT p.*, c.name as cat_name, ROUND(p.import_price * (1 + p.profit_rate/100)) as sell_price, SUM(pv.stock_quantity) as total_stock
         FROM products p JOIN categories c ON p.category_id = c.id
                         JOIN product_varieties pv ON p.id = pv.product_id
         WHERE $where AND pv.stock_quantity > 0
