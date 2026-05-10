@@ -64,6 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repay_order_id'])) {
         if ($hasPaymentDeadlineCol) $setSql .= ", payment_deadline=NULL";
         $conn->query("UPDATE orders SET $setSql WHERE id=$repay_id");
         $_SESSION['cart'] = [];
+        if (isLoggedIn()) {
+            saveCartToDB($conn, $user_id, []);
+        }
         redirect('checkout.php?success=' . $repay_id);
     }
 }
@@ -159,6 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
 
                 $conn->commit();
                 $_SESSION['cart'] = [];
+                if (isLoggedIn()) {
+                    saveCartToDB($conn, $user_id, []);
+                }
                 if ($online_sub === 'zalopay') {
                     redirect('zalo_pay/zalopay_create.php?order_id=' . $order_id);
                 }
@@ -220,6 +226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['repay_order_id'])) {
 
                 $conn->commit();
                 $_SESSION['cart'] = [];
+                if (isLoggedIn()) {
+                    saveCartToDB($conn, $user_id, []);
+                }
                 redirect('checkout.php?success=' . $order_id);
             } catch (Exception $e) {
                 $conn->rollback();

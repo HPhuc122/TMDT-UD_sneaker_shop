@@ -28,11 +28,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['cart'][$idx]['qty'] = $qty;
         }
         $_SESSION['cart'] = array_values($_SESSION['cart']);
+        if (isLoggedIn()) {
+            saveCartToDB($conn, $_SESSION['user_id'], $_SESSION['cart']);
+        }
         redirect('cart.php?msg=updated');
     }
     if (isset($_POST['remove'])) {
         $idx = (int)$_POST['remove'];
         array_splice($_SESSION['cart'], $idx, 1);
+        if (isLoggedIn()) {
+            saveCartToDB($conn, $_SESSION['user_id'], $_SESSION['cart']);
+        }
         redirect('cart.php?msg=removed');
     }
 }

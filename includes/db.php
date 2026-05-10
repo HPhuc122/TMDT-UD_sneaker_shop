@@ -208,5 +208,61 @@ if (session_name() === USER_SESSION_NAME) {
 // Fallback: auto-cancel expired unpaid orders on normal web traffic.
 if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
     runExpiredOrderCancellationFallback($conn);
+    // Auto-create cart_items table
+    $conn->query("CREATE TABLE IF NOT EXISTS cart_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        variant_id INT NOT NULL,
+        quantity INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY user_variant (user_id, variant_id),
+        CONSTRAINT fk_cart_user_new FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_cart_variant_new FOREIGN KEY (variant_id) REFERENCES product_varieties(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+}
+
+function saveCartToDB($conn, $user_id, $cart) {
+    // Clear old cart and save current session cart
+    $conn->query("DELETE FROM cart_items WHERE user_id = " . (int)$user_id);
+    if (empty($cart)) return;
+    foreach ($cart as $item) {
+        $vid = (int)$item['variant_id'];
+        $qty = (int)$item['qty'];
+        if ($vid > 0 && $qty > 0) {
+            $conn->query("INSERT INTO cart_items (user_id, variant_id, quantity) VALUES (" . (int)$user_id . ", $vid, $qty)");
+        }
+    }
+}
+
+function loadCartFromDB($conn, $user_id) {
+    $uid = (int)$user_id;
+    $res = $conn->query("SELECT ci.quantity, pv.id as vid, pv.product_id, pv.size_id, pv.color_id, 
+                                s.size, c.name as color, p.name as product_name, p.image, p.import_price, p.profit_rate
+                         FROM cart_items ci
+                         JOIN product_varieties pv ON ci.variant_id = pv.id
+                         JOIN products p ON pv.product_id = p.id
+                         JOIN sizes s ON pv.size_id = s.id
+                         JOIN colors c ON pv.color_id = c.id
+                         WHERE ci.user_id = $uid");
+    
+    $cart = [];
+    while ($row = $res->fetch_assoc()) {
+        $sellPrice = round($row['import_price'] * (1 + $row['profit_rate']/100));
+        $cart[] = [
+            'product_id' => $row['product_id'],
+            'variant_id' => $row['vid'],
+            'name'  => $row['product_name'],
+            'price' => $sellPrice,
+            'qty'   => $row['quantity'],
+            'image' => $row['image'],
+            'size_id'  => $row['size_id'],
+            'color_id' => $row['color_id'],
+            'size'  => $row['size'],
+            'color' => $row['color'],
+            'cart_key' => $row['product_id'] . '_' . $row['size_id'] . '_' . $row['color_id']
+        ];
+    }
+    $_SESSION['cart'] = $cart;
 }
 ?>

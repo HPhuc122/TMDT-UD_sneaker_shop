@@ -126,6 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_cart'])) {
         ];
     }
 
+    if (isLoggedIn()) {
+        saveCartToDB($conn, $_SESSION['user_id'], $_SESSION['cart']);
+    }
+
     redirect('product.php?id=' . $id . '&added=1');
 }
 

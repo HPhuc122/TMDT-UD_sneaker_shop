@@ -33,6 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['username']  = $user['username'];
                 $_SESSION['full_name'] = $user['full_name'];
                 $_SESSION['role']      = 'customer';
+                
+                // Restore saved cart from DB
+                loadCartFromDB($conn, $user['id']);
+                
                 redirect($redirect);
             }
         } else {
