@@ -8,7 +8,7 @@ $vnp_HashSecret  = getenv('VNPAY_HASH_SECRET') ?: "SLBNCWQ9VZ6CRMGW62JRR2CZBJH49
 $vnp_Url         = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
 
 // Lấy base URL từ môi trường (Ví dụ: https://my-app.railway.app)
-$app_url = getenv('APP_URL') ?: "http://localhost/TMDT-UD_sneaker_shop";
+$app_url = getenv('APP_URL') ?: (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]";
 
 $vnp_Returnurl   = $app_url . "/vnpay/vnpay_return.php";
 $vnp_IpnUrl      = $app_url . "/vnpay/vnpay_ipn.php";
