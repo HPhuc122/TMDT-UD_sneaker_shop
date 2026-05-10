@@ -1,8 +1,6 @@
 <?php
 // admin/discounts.php
 require_once '_layout.php';
-adminHeader('Quản lý mã giảm giá');
-
 $msg = '';
 
 // TOGGLE STATUS
@@ -15,14 +13,22 @@ if (isset($_GET['toggle_status'])) {
 // DELETE
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
-    // Delete related records first (if no cascade)
-    $conn->query("DELETE FROM discount_code_categories WHERE discount_code_id=$id");
-    $conn->query("DELETE FROM discount_code_products WHERE discount_code_id=$id");
-    $conn->query("DELETE FROM discount_code_usages WHERE discount_code_id=$id");
-    $conn->query("DELETE FROM user_saved_coupons WHERE discount_code_id=$id");
-    // Delete coupon
-    $conn->query("DELETE FROM discount_codes WHERE id=$id");
-    redirect('discounts.php');
+    
+    // Kiểm tra xem mã đã được sử dụng chưa
+    $check_usage = $conn->query("SELECT total_used FROM discount_codes WHERE id=$id")->fetch_assoc();
+    
+    if ($check_usage && $check_usage['total_used'] > 0) {
+        $msg = '<div class="alert alert-warning shadow-sm"><i class="bi bi-exclamation-triangle-fill me-2"></i>Mã giảm giá này đã được sử dụng trong các đơn hàng. Để đảm bảo tính toàn vẹn dữ liệu, bạn <b>không được xóa</b> mã này mà chỉ có thể <b>Tắt</b> trạng thái để ngưng áp dụng.</div>';
+    } else {
+        // Delete related records first (if no cascade)
+        $conn->query("DELETE FROM discount_code_categories WHERE discount_code_id=$id");
+        $conn->query("DELETE FROM discount_code_products WHERE discount_code_id=$id");
+        $conn->query("DELETE FROM discount_code_usages WHERE discount_code_id=$id");
+        $conn->query("DELETE FROM user_saved_coupons WHERE discount_code_id=$id");
+        // Delete coupon
+        $conn->query("DELETE FROM discount_codes WHERE id=$id");
+        redirect('discounts.php');
+    }
 }
 
 // SAVE (add/edit)
@@ -52,12 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     } elseif ($max_uses !== 'NULL' && $max_per_user > $max_uses) {
         $msg = '<div class="alert alert-danger">Số lượt dùng mỗi khách không được lớn hơn tổng lượt dùng của mã.</div>';
     } elseif ($start_date_val && $start_date_val < $now_str && !isset($_GET['edit'])) {
-        // Only check for new coupons, or if they are changing it to a past date
-        // Actually, requirement says "ngày bắt đầu >= ngày hiện tại"
         $msg = '<div class="alert alert-danger">Ngày bắt đầu không được nhỏ hơn thời gian hiện tại.</div>';
     } elseif ($start_date_val && $end_date_val) {
         if ($start_date_val === $end_date_val) {
-            // Same day/time -> Active for full 24h of that day
             $day = date('Y-m-d', strtotime($start_date_val));
             $start_date = "'$day 00:00:00'";
             $end_date   = "'$day 23:59:59'";
@@ -74,7 +77,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if (empty($msg)) {
         if ($_POST['action'] === 'add') {
-            // Check unique
             $check = $conn->query("SELECT id FROM discount_codes WHERE code='$code'");
             if ($check->num_rows > 0) {
                 $msg = '<div class="alert alert-danger">Mã code này đã tồn tại.</div>';
@@ -103,6 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 }
+
+adminHeader('Quản lý mã giảm giá');
 
 $discounts = $conn->query("SELECT * FROM discount_codes ORDER BY created_at DESC");
 $all_categories = $conn->query("SELECT * FROM categories ORDER BY name");
