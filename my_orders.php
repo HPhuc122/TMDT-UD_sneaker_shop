@@ -50,9 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
     if (!$order) {
         $_SESSION['orders_msg'] = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Không tìm thấy đơn hàng.</div>';
     } elseif ($action === 'cancel_order') {
-       $pendingPaymentStatuses = $order['payment_method'] === 'online'
-            ? getPendingPaymentStatuses($conn)
-            : [];
+        // Read the status configuration once; the policy selects the method.
+        $pendingPaymentStatuses = getPendingPaymentStatuses($conn);
 
         $canCancel = canCustomerCancelOrder(
             $order['payment_method'],
@@ -63,8 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
             $_SESSION['orders_msg'] = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Đơn hàng này không thể huỷ ở trạng thái hiện tại.</div>';
         } else {
             $cancelResult = cancelOrderAndRestoreStock($conn, $orderId, $user_id);
-            $alertType = $cancelResult['success'] ? 'success' : 'danger';
-            $icon = $cancelResult['success'] ? 'check-circle' : 'exclamation-circle';
+            // Decide both presentation values in one branch.
+            if ($cancelResult['success']) {
+                $alertType = 'success';
+                $icon = 'check-circle';
+            } else {
+                $alertType = 'danger';
+                $icon = 'exclamation-circle';
+            }
             $_SESSION['orders_msg'] = '<div class="alert alert-' . $alertType . '"><i class="bi bi-' . $icon . ' me-2"></i>' . htmlspecialchars($cancelResult['message']) . '</div>';
         }
     } elseif (!isPendingPaymentOrderStatus($conn, $order['status'])) {

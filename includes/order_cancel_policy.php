@@ -5,9 +5,13 @@ function canCustomerCancelOrder(
     string $status,
     array $pendingPaymentStatuses
 ): bool {
-    return ($paymentMethod === 'cash' && $status === 'pending')
-        || (
-            $paymentMethod === 'online'
-            && in_array($status, $pendingPaymentStatuses, true)
-        );
+    // Each payment method has its own exit: no cross-method path.
+    switch ($paymentMethod) {
+        case 'cash':
+            return $status === 'pending';
+        case 'online':
+            return in_array($status, $pendingPaymentStatuses, true);
+        default:
+            return false;
+    }
 }

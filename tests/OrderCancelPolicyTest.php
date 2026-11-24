@@ -76,4 +76,35 @@ final class OrderCancelPolicyTest extends TestCase
 
         $this->assertFalse($actual);
     }
+
+    /** @dataProvider cancellationMatrix */
+    public function testCancellationPolicyMatrix(string $method, string $status, array $pending, bool $expected): void
+    {
+        $this->assertSame($expected, canCustomerCancelOrder($method, $status, $pending));
+    }
+
+    public static function cancellationMatrix(): array
+    {
+        $pending = ['pending_payment', 'awaiting_payment'];
+        $cases = [];
+        // Explicit expected results, independent of the implementation.
+        $expectedByMethod = [
+            'cash' => [true, false, false, false, false, false],
+            'online' => [false, true, true, false, false, false],
+            'transfer' => [false, false, false, false, false, false],
+        ];
+        $statuses = ['pending', 'pending_payment', 'awaiting_payment', 'confirmed', 'delivered', 'cancelled'];
+        foreach ($expectedByMethod as $method => $expected) {
+            foreach ($statuses as $index => $status) {
+                $cases[$method . '_' . $status] = [$method, $status, $pending, $expected[$index]];
+            }
+        }
+        $cases['online_legacy_pending'] = ['online', 'pending', ['pending'], true];
+        $cases['online_empty_configuration'] = ['online', 'pending', [], false];
+        $cases['cash_ignores_online_configuration'] = ['cash', 'pending', [], true];
+        $cases['unknown_method'] = ['unknown', 'pending', $pending, false];
+        $cases['empty_method'] = ['', 'pending', $pending, false];
+        $cases['strict_status_comparison'] = ['online', '0', [0], false];
+        return $cases;
+    }
 }
