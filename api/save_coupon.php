@@ -17,8 +17,9 @@ if (!$coupon_id) {
 }
 
 // Check if coupon exists and is active
-$check = $conn->query("SELECT id FROM discount_codes WHERE id = $coupon_id AND status = 'active'");
-if ($check->num_rows == 0) {
+$check = $conn->query("SELECT * FROM discount_codes WHERE id = $coupon_id AND status = 'active'");
+$coupon = $check->fetch_assoc();
+if (!$coupon || validateDiscountData($coupon) || !isDiscountCurrentlyValid($coupon)) {
     echo json_encode(['success' => false, 'message' => 'Mã giảm giá không khả dụng.']);
     exit;
 }

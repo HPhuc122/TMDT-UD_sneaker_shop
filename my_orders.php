@@ -1,5 +1,6 @@
 <?php
 require_once 'includes/db.php';
+require_once __DIR__ . '/includes/order_cancel_policy.php';
 if (!isLoggedIn()) redirect('login.php?redirect=my_orders.php');
 
 $pageTitle = 'Đơn hàng của tôi';
@@ -49,8 +50,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
     if (!$order) {
         $_SESSION['orders_msg'] = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Không tìm thấy đơn hàng.</div>';
     } elseif ($action === 'cancel_order') {
-        $canCancel = ($order['payment_method'] === 'cash' && $order['status'] === 'pending')
-            || ($order['payment_method'] === 'online' && isPendingPaymentOrderStatus($conn, $order['status']));
+       $pendingPaymentStatuses = $order['payment_method'] === 'online'
+            ? getPendingPaymentStatuses($conn)
+            : [];
+
+        $canCancel = canCustomerCancelOrder(
+            $order['payment_method'],
+            $order['status'],
+            $pendingPaymentStatuses
+        );
         if (!$canCancel) {
             $_SESSION['orders_msg'] = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Đơn hàng này không thể huỷ ở trạng thái hiện tại.</div>';
         } else {

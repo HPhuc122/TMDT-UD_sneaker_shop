@@ -2,12 +2,13 @@
 // admin/discounts.php
 require_once '_layout.php';
 $msg = '';
+$discount_errors = [];
 
 // TOGGLE STATUS
 if (isset($_GET['toggle_status'])) {
     $id = (int)$_GET['toggle_status'];
     $discount = $conn->query("SELECT * FROM discount_codes WHERE id=$id")->fetch_assoc();
-    if ($discount && !isDiscountExpired($discount)) {
+    if ($discount && ($discount['status'] === 'active' || (!validateDiscountData($discount) && !isDiscountExpired($discount)))) {
         $conn->query("UPDATE discount_codes SET status = IF(status='active', 'inactive', 'active') WHERE id=$id");
     }
     redirect('discounts.php');
@@ -38,9 +39,11 @@ if (isset($_GET['delete'])) {
 // SAVE (add/edit)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $code           = sanitize($conn, $_POST['code'] ?? '');
-    $type           = sanitize($conn, $_POST['discount_type'] ?? 'fixed');
-    $value          = (float)$_POST['discount_value'];
-    $max_discount   = !empty($_POST['max_discount_amount']) ? (float)$_POST['max_discount_amount'] : 'NULL';
+    $type_raw       = $_POST['discount_type'] ?? null;
+    $type           = is_string($type_raw) ? sanitize($conn, $type_raw) : '';
+    $value          = (float)($_POST['discount_value'] ?? 0);
+    $max_discount_raw = $_POST['max_discount_amount'] ?? '';
+    $max_discount   = $max_discount_raw === '' ? 'NULL' : (float)$max_discount_raw;
     $min_order      = (float)$_POST['min_order_amount'];
     $max_uses       = !empty($_POST['max_uses']) ? (int)$_POST['max_uses'] : 'NULL';
     $max_per_user   = (int)$_POST['max_uses_per_user'];
@@ -51,12 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $categories     = $_POST['categories'] ?? [];
     $products       = $_POST['products'] ?? [];
 
-    if (!$code || $value <= 0) {
-        $msg = '<div class="alert alert-danger">Vui lòng nhập mã code và giá trị giảm hợp lệ.</div>';
-    } elseif ($type === 'percentage' && $value > 100) {
-        $msg = '<div class="alert alert-danger">Phần trăm giảm phải lớn hơn 0 và không được vượt quá 100%.</div>';
-    } elseif ($max_discount !== 'NULL' && (float)$_POST['max_discount_amount'] < 0) {
-        $msg = '<div class="alert alert-danger">Số tiền giảm tối đa không được nhỏ hơn 0.</div>';
+    $discount_errors = validateDiscountData([
+        'discount_type' => $_POST['discount_type'] ?? null,
+        'discount_value' => $_POST['discount_value'] ?? null,
+        'max_discount_amount' => $max_discount_raw === '' ? null : $max_discount_raw,
+        'start_date' => $start_date_val,
+        'end_date' => $end_date_val,
+    ]);
+    if (!$discount_errors) {
+        $start_date_val = $start_date_val === '' ? '' : date('Y-m-d\TH:i:s', discountDateTimestamp($start_date_val));
+        $end_date_val = $end_date_val === '' ? '' : date('Y-m-d\TH:i:s', discountDateTimestamp($end_date_val));
+    }
+    if ($discount_errors) {
+        $msg = '<div class="alert alert-danger">Vui lòng kiểm tra các trường được báo lỗi bên dưới.</div>';
+    } elseif (!$code) {
+        $msg = '<div class="alert alert-danger">Vui lòng nhập mã code.</div>';
     } elseif ($max_uses !== 'NULL' && $max_uses < 1) {
         $msg = '<div class="alert alert-danger">Tổng lượt dùng phải ít nhất là 1.</div>';
     } elseif ($max_per_user < 1) {
@@ -144,16 +156,25 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                                 <option value="fixed">Tiền cố định (đ)</option>
                                 <option value="percentage">Phần trăm (%)</option>
                             </select>
+                            <?php if (isset($discount_errors['discount_type'])): ?>
+                                <div class="text-danger small" role="alert"><?= htmlspecialchars($discount_errors['discount_type']) ?></div>
+                            <?php endif; ?>
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Giá trị giảm <span class="text-danger">*</span></label>
-                            <input type="number" name="discount_value" id="discountValue" class="form-control" required min="1" step="any">
+                            <input type="number" name="discount_value" id="discountValue" class="form-control" required min="0.01" step="any">
+                        <?php if (isset($discount_errors['discount_value'])): ?>
+                            <div class="text-danger small" role="alert"><?= htmlspecialchars($discount_errors['discount_value']) ?></div>
+                        <?php endif; ?>
                         </div>
                     </div>
 
-                    <div class="mb-3" id="maxDiscountArea" style="display:none">
+                    <div class="mb-3" id="maxDiscountArea" style="display:<?= isset($discount_errors['max_discount_amount']) ? 'block' : 'none' ?>">
                         <label class="form-label fw-semibold small">Giảm tối đa (đ)</label>
-                        <input type="number" name="max_discount_amount" class="form-control" placeholder="Để trống nếu không giới hạn" min="0">
+                        <input type="number" name="max_discount_amount" class="form-control" placeholder="Để trống nếu không giới hạn" min="0.01" step="any">
+                        <?php if (isset($discount_errors['max_discount_amount'])): ?>
+                            <div class="text-danger small" role="alert"><?= htmlspecialchars($discount_errors['max_discount_amount']) ?></div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="mb-3">
@@ -176,10 +197,16 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Ngày bắt đầu</label>
                             <input type="datetime-local" name="start_date" class="form-control">
+                        <?php if (isset($discount_errors['start_date'])): ?>
+                            <div class="text-danger small" role="alert"><?= htmlspecialchars($discount_errors['start_date']) ?></div>
+                        <?php endif; ?>
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Ngày kết thúc</label>
                             <input type="datetime-local" name="end_date" class="form-control">
+                        <?php if (isset($discount_errors['end_date'])): ?>
+                            <div class="text-danger small" role="alert"><?= htmlspecialchars($discount_errors['end_date']) ?></div>
+                        <?php endif; ?>
                         </div>
                     </div>
 
