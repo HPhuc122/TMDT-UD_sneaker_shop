@@ -34,6 +34,13 @@ if (!$discount) {
     exit;
 }
 
+$validation_errors = validateDiscountData($discount);
+if ($validation_errors) {
+    error_log('Invalid discount id=' . (int)$discount['id'] . ' fields=' . implode(',', array_keys($validation_errors)));
+    echo json_encode(['success' => false, 'message' => 'Mã giảm giá không hợp lệ.']);
+    exit;
+}
+
 // 1. Check dates and global usage using the shared validity rules.
 $now_ts = time();
 $start_ts = discountDateTimestamp($discount['start_date']);
@@ -65,10 +72,7 @@ if ($usage_count >= $discount['max_uses_per_user']) {
 }
 
 // Calculate cart total
-$cart_total = 0;
-foreach ($cart as $item) {
-    $cart_total += $item['price'] * $item['qty'];
-}
+$cart_total = calculateCartTotal($cart);
 
 // 4. Check Minimum Order
 if ($cart_total < $discount['min_order_amount']) {
@@ -123,20 +127,12 @@ if ($discount['apply_to'] === 'category') {
 }
 
 // Calculate discount amount
-$discount_amount = 0;
-if ($discount['discount_type'] === 'fixed') {
-    $discount_amount = $discount['discount_value'];
-} else {
-    $discount_amount = $cart_total * ($discount['discount_value'] / 100);
-    // Cap by max_discount_amount
-    if ($discount['max_discount_amount'] !== null && $discount_amount > $discount['max_discount_amount']) {
-        $discount_amount = $discount['max_discount_amount'];
-    }
-}
-
-// Cap discount at total amount
-if ($discount_amount > $cart_total) {
-    $discount_amount = $cart_total;
+try {
+    $discount_amount = calculateDiscountAmount($discount, $cart_total);
+} catch (InvalidArgumentException $e) {
+    error_log('Discount calculation rejected for id=' . (int)$discount['id']);
+    echo json_encode(['success' => false, 'message' => 'Dữ liệu giỏ hàng không hợp lệ.']);
+    exit;
 }
 
 echo json_encode([

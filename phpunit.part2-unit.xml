@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/part2-unit-bootstrap.php" colors="true"
+         failOnWarning="true" failOnRisky="true" beStrictAboutOutputDuringTests="true">
+    <testsuites>
+        <testsuite name="Part2Unit">
+            <file>tests/Part2_GioHang_KhuyenMai/DiscountHelpersTest.php</file>
+            <file>tests/Part2_GioHang_KhuyenMai/CartTotalTest.php</file>
+            <file>tests/Part2_GioHang_KhuyenMai/DiscountAmountTest.php</file>
+            <file>tests/Part2_GioHang_KhuyenMai/DiscountValidationTest.php</file>
+        </testsuite>
+    </testsuites>
+</phpunit>
