@@ -47,8 +47,11 @@ final class SanitizeHelperTest extends DatabaseTestCase
      */
     public function testSanitizeNeutralisesInjectionPayload(): void
     {
-        // Gợi ý: Dùng payload "1' OR '1'='1" rồi chứng minh chuỗi sau khi làm sạch không còn dấu nháy
-        // tự do.
-        $this->markTestIncomplete('TODO: sanitize() vô hiệu hóa chuỗi tấn công SQL injection');
+        // CLI: php vendor/bin/phpunit --filter testSanitizeNeutralisesInjectionPayload
+        $payload = "1' OR '1'='1";
+        $actual = sanitize(self::$conn, $payload);
+        $this->assertSame("1\\' OR \\'1\\'=\\'1", $actual, 'Kết quả thực tế phải escape mọi dấu nháy đơn.');
+        $this->assertStringNotContainsString("' OR '1'='1", $actual,
+            'Payload sau khi escape không được còn cấu trúc điều kiện SQL nguyên bản.');
     }
 }

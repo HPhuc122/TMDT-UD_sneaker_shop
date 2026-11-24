@@ -23,7 +23,7 @@ final class AdminLayoutTest extends HttpTestCase
      */
     public function testLayoutRedirectsGuestToAdminLogin(): void
     {
-        $this->markTestIncomplete('TODO: Khách chưa đăng nhập bị chuyển về admin/login.php');
+        $this->assertRedirectTo($this->get('admin/index.php'),'login.php');
     }
 
     /**
@@ -31,7 +31,7 @@ final class AdminLayoutTest extends HttpTestCase
      */
     public function testLayoutRejectsCustomerSession(): void
     {
-        $this->markTestIncomplete('TODO: Phiên khách hàng không vào được trang quản trị');
+        $this->loginAs(); $this->assertRedirectTo($this->get('admin/index.php'),'login.php');
     }
 
     /**
@@ -39,6 +39,12 @@ final class AdminLayoutTest extends HttpTestCase
      */
     public function testLayoutShowsAdminNameAndMenu(): void
     {
-        $this->markTestIncomplete('TODO: Hiển thị tên admin và đủ các mục menu');
+        // CLI: php vendor/bin/phpunit --filter testLayoutShowsAdminNameAndMenu
+        $this->loginAsAdmin();
+        $response = $this->get('admin/index.php');
+        foreach (['Quản Trị Viên', 'Dashboard', 'products.php', 'categories.php', 'login.php?action=logout'] as $item) {
+            $this->assertStringContainsString($item, $response['body'],
+                'Expected menu item was not found in actual admin layout: ' . $item);
+        }
     }
 }

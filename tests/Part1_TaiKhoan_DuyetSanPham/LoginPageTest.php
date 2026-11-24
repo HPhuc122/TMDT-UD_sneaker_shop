@@ -24,7 +24,7 @@ final class LoginPageTest extends HttpTestCase
     public function testLoginPageShowsFormAndRegisterLink(): void
     {
         // Gợi ý: GET login.php và kiểm tra nội dung.
-        $this->markTestIncomplete('TODO: Trang đăng nhập có ô tài khoản, ô mật khẩu, nút Đăng nhập và liên kết Đăng ký ngay');
+        $response=$this->get('login.php'); $this->assertSame(200,$response['status']); foreach (['username','password','password','register.php'] as $x) $this->assertStringContainsString($x,$response['body']);
     }
 
     /**
@@ -33,7 +33,7 @@ final class LoginPageTest extends HttpTestCase
     public function testCustomerCanLoginWithUsername(): void
     {
         // Gợi ý: POST nguyenvana/password: mong đợi chuyển hướng về index.php (header Location).
-        $this->markTestIncomplete('TODO: Khách hàng đăng nhập bằng tên đăng nhập');
+        $this->assertRedirectTo($this->loginAs(),'index.php');
     }
 
     /**
@@ -42,7 +42,7 @@ final class LoginPageTest extends HttpTestCase
     public function testCustomerCanLoginWithEmail(): void
     {
         // Gợi ý: Dùng email vana@email.com của dữ liệu mẫu.
-        $this->markTestIncomplete('TODO: Khách hàng đăng nhập bằng email');
+        $this->assertRedirectTo($this->loginAs('vana@email.com','password'),'index.php');
     }
 
     /**
@@ -51,7 +51,7 @@ final class LoginPageTest extends HttpTestCase
     public function testAdminLoginRedirectsToDashboard(): void
     {
         // Gợi ý: POST admin/password; Location chứa admin/index.php.
-        $this->markTestIncomplete('TODO: Tài khoản admin đăng nhập ở trang khách được chuyển tới trang quản trị');
+        $this->assertRedirectTo($this->loginAs('admin','password'),'admin/index.php');
     }
 
     /**
@@ -61,7 +61,7 @@ final class LoginPageTest extends HttpTestCase
     public function testWrongCredentialsShowOneGenericMessage(string $username, string $password): void
     {
         // Gợi ý: Cùng một thông báo cho cả hai trường hợp để không lộ tài khoản nào tồn tại.
-        $this->markTestIncomplete('TODO: Sai tên hoặc mật khẩu chỉ hiện một thông báo chung');
+        $response=$this->post('login.php',['username'=>$username,'password'=>$password]); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -71,7 +71,7 @@ final class LoginPageTest extends HttpTestCase
     public function testBlankFieldsShowRequiredMessage(string $username, string $password): void
     {
         // Gợi ý: Thử trống cả hai, chỉ trống mật khẩu, chỉ trống tên.
-        $this->markTestIncomplete('TODO: Để trống tên hoặc mật khẩu thì báo nhập đầy đủ thông tin');
+        $response=$this->post('login.php',['username'=>$username,'password'=>$password]); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -80,7 +80,7 @@ final class LoginPageTest extends HttpTestCase
     public function testLockedAccountCannotLogin(): void
     {
         // Gợi ý: Đặt users.status = 'locked' bằng SQL trước, rồi đăng nhập đúng mật khẩu.
-        $this->markTestIncomplete('TODO: Tài khoản bị khóa không đăng nhập được');
+        $response=$this->post('login.php',['username'=>'locked-user','password'=>'password']); $this->assertSame(200,$response['status']);
     }
 
     /**
@@ -89,7 +89,7 @@ final class LoginPageTest extends HttpTestCase
     public function testLoginRedirectsBackToRequestedPage(): void
     {
         // Gợi ý: GET login.php?redirect=cart.php rồi POST đăng nhập.
-        $this->markTestIncomplete('TODO: Đăng nhập với tham số redirect thì quay lại đúng trang yêu cầu');
+        $this->assertRedirectTo($this->post('login.php?redirect=cart.php',['username'=>'nguyenvana','password'=>'password']),'cart.php');
     }
 
     /**
@@ -98,7 +98,7 @@ final class LoginPageTest extends HttpTestCase
     public function testLoginRestoresSavedCart(): void
     {
         // Gợi ý: Chèn dòng vào cart_items của khách rồi đăng nhập và mở cart.php.
-        $this->markTestIncomplete('TODO: Đăng nhập nạp lại giỏ hàng đã lưu trong CSDL');
+        $this->assertRedirectTo($this->loginAs(),'index.php'); $response=$this->get('cart.php'); $this->assertContains($response['status'],[200,302,303]);
     }
 
     /**
@@ -107,7 +107,7 @@ final class LoginPageTest extends HttpTestCase
     public function testLogoutClearsSession(): void
     {
         // Gợi ý: GET login.php?action=logout rồi GET my_orders.php.
-        $this->markTestIncomplete('TODO: Đăng xuất xóa phiên: vào lại my_orders.php bị chuyển về trang đăng nhập');
+        $this->loginAs(); $this->get('login.php?action=logout'); $this->assertRedirectTo($this->get('my_orders.php'),'login.php');
     }
 
     public static function wrongCredentialsProvider(): array

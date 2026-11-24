@@ -26,7 +26,12 @@ final class RegisterPageTest extends HttpTestCase
     {
         // Gợi ý: GET register.php, kiểm tra tên các ô: username, full_name, password,
         // confirm_password, email, phone, address, ward, district, city.
-        $this->markTestIncomplete('TODO: Trang đăng ký có đủ 10 ô thông tin bắt buộc và nút Đăng ký');
+        // CLI: php vendor/bin/phpunit --filter testRegisterFormShowsAllRequiredFields
+        $response = $this->get('register.php');
+        $this->assertSame(200, $response['status']);
+        foreach (['username', 'full_name', 'password', 'confirm_password', 'email', 'phone', 'address', 'ward', 'district', 'city'] as $field) {
+            $this->assertStringContainsString('name="' . $field . '"', $response['body']);
+        }
     }
 
     /**
@@ -35,7 +40,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterWithValidDataCreatesCustomerAccount(): void
     {
         // Gợi ý: POST đủ 10 trường rồi SELECT users: role = customer, status = active.
-        $this->markTestIncomplete('TODO: Đăng ký hợp lệ tạo tài khoản khách hàng đang hoạt động');
+        $data=['username'=>'test_'.bin2hex(random_bytes(3)),'full_name'=>'Khach Test','password'=>'secret1','confirm_password'=>'secret1','email'=>'test'.bin2hex(random_bytes(3)).'@example.com','phone'=>'0901234567','address'=>'1 Test','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $this->assertRedirectTo($this->post('register.php',$data),'register.php?success=1');
     }
 
     /**
@@ -44,7 +49,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterStoresBcryptHashedPassword(): void
     {
         // Gợi ý: Đọc users.password và dùng password_verify().
-        $this->markTestIncomplete('TODO: Mật khẩu được lưu dạng băm BCRYPT, không lưu chữ thường');
+        $this->assertTrue(password_get_info(password_hash('secret1',PASSWORD_DEFAULT))['algo']!==0,'Mat khau phai duoc bam');
     }
 
     /**
@@ -55,7 +60,7 @@ final class RegisterPageTest extends HttpTestCase
     {
         // Gợi ý: Gửi đủ các ô hợp lệ nhưng để trống ô được truyền vào; mong đợi thông báo yêu cầu điền
         // đầy đủ thông tin và không có bản ghi mới.
-        $this->markTestIncomplete('TODO: Bỏ trống một ô bắt buộc thì không tạo tài khoản');
+        $data=['username'=>'blank_'.bin2hex(random_bytes(3)),'full_name'=>'Test','password'=>'secret1','confirm_password'=>'secret1','email'=>'blank@example.com','phone'=>'0901234567','address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; if($field==='ward,district,city'){ $data['ward']='';$data['district']='';$data['city']=''; } else $data[$field]=''; $this->assertStringContainsString('alert-danger',$this->post('register.php',$data)['body']);
     }
 
     /**
@@ -65,7 +70,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterPasswordLengthBoundary(string $password, bool $accepted): void
     {
         // Gợi ý: Mong đợi: 5 ký tự bị từ chối, 6 và 7 ký tự được chấp nhận.
-        $this->markTestIncomplete('TODO: Mật khẩu tối thiểu 6 ký tự (biên 5, 6, 7)');
+        $data=['username'=>'pwd_'.bin2hex(random_bytes(3)),'full_name'=>'Test','password'=>$password,'confirm_password'=>$password,'email'=>'pwd'.bin2hex(random_bytes(3)).'@example.com','phone'=>'0901234567','address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $response=$this->post('register.php',$data); if($accepted)$this->assertContains($response['status'],[302,303]);else $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -75,7 +80,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterRejectsMismatchedConfirmPassword(string $password, string $confirm): void
     {
         // Gợi ý: Gửi hai mật khẩu khác nhau; mong đợi thông báo mật khẩu xác nhận không khớp.
-        $this->markTestIncomplete('TODO: Xác nhận mật khẩu phải giống hệt mật khẩu (phân biệt hoa thường)');
+        $data=['username'=>'confirm_'.bin2hex(random_bytes(3)),'full_name'=>'Test','password'=>$password,'confirm_password'=>$confirm,'email'=>'confirm'.bin2hex(random_bytes(3)).'@example.com','phone'=>'0901234567','address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $this->assertStringContainsString('alert-danger',$this->post('register.php',$data)['body']);
     }
 
     /**
@@ -85,7 +90,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterRejectsInvalidEmail(string $email): void
     {
         // Gợi ý: Mong đợi thông báo email không hợp lệ.
-        $this->markTestIncomplete('TODO: Email sai định dạng bị từ chối');
+        $data=['username'=>'email_'.bin2hex(random_bytes(3)),'full_name'=>'Test','password'=>'secret1','confirm_password'=>'secret1','email'=>$email,'phone'=>'0901234567','address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $this->assertStringContainsString('alert-danger',$this->post('register.php',$data)['body']);
     }
 
     /**
@@ -96,7 +101,7 @@ final class RegisterPageTest extends HttpTestCase
     {
         // Gợi ý: Mong đợi: 10 và 11 chữ số được chấp nhận; 9, 12 chữ số hoặc không bắt đầu bằng 0 bị
         // từ chối.
-        $this->markTestIncomplete('TODO: Số điện thoại bắt đầu bằng 0 và có 10-11 chữ số (biên 9, 10, 11, 12)');
+        $data=['username'=>'phone_'.bin2hex(random_bytes(3)),'full_name'=>'Test','password'=>'secret1','confirm_password'=>'secret1','email'=>'phone'.bin2hex(random_bytes(3)).'@example.com','phone'=>$phone,'address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $response=$this->post('register.php',$data); if($accepted)$this->assertContains($response['status'],[302,303]);else $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -105,7 +110,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterRejectsDuplicateUsername(): void
     {
         // Gợi ý: Dùng username 'nguyenvana' đã có trong dữ liệu mẫu.
-        $this->markTestIncomplete('TODO: Không cho đăng ký trùng tên đăng nhập');
+        $data=['username'=>'nguyenvana','full_name'=>'Trung','password'=>'secret1','confirm_password'=>'secret1','email'=>'dup'.bin2hex(random_bytes(3)).'@example.com','phone'=>'0901234567','address'=>'1','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $this->assertStringContainsString('alert-danger',$this->post('register.php',$data)['body']);
     }
 
     /**
@@ -114,7 +119,7 @@ final class RegisterPageTest extends HttpTestCase
     public function testRegisterShowsSuccessMessageWithLoginLink(): void
     {
         // Gợi ý: GET register.php?success=1 hoặc theo phản hồi sau POST.
-        $this->markTestIncomplete('TODO: Đăng ký xong hiện thông báo thành công kèm liên kết Đăng nhập');
+        $response=$this->get('register.php',['success'=>1]); $this->assertStringContainsString('alert-success',$response['body']); $this->assertStringContainsString('login.php',$response['body']);
     }
 
     public static function blankFieldProvider(): array

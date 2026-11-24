@@ -24,7 +24,11 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchWithoutConditionsShowsNoResultSection(): void
     {
-        $this->markTestIncomplete('TODO: Chưa nhập điều kiện nào thì chỉ hiện form, chưa hiện danh sách');
+        // CLI: php vendor/bin/phpunit --filter testSearchWithoutConditionsShowsNoResultSection
+        $actual = $this->get('search.php');
+        $this->assertSame(200, $actual['status']);
+        $this->assertStringContainsString('Nhập từ khóa để tìm kiếm sản phẩm', $actual['body']);
+        $this->assertStringNotContainsString('Tìm thấy <strong>', $actual['body']);
     }
 
     /**
@@ -32,8 +36,14 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchByKeywordIsCaseInsensitive(): void
     {
-        // Gợi ý: q=Nike và q=nike cho cùng kết quả.
-        $this->markTestIncomplete('TODO: Tìm theo từ khóa không phân biệt hoa thường');
+        // CLI: php vendor/bin/phpunit --filter testSearchByKeywordIsCaseInsensitive
+        $upper = $this->get('search.php', ['q' => 'Nike']);
+        $lower = $this->get('search.php', ['q' => 'nike']);
+        $this->assertSame(200, $upper['status']);
+        $this->assertSame(200, $lower['status']);
+        preg_match('/Tìm thấy <strong>(\d+)<\/strong>/u', $upper['body'], $upperCount);
+        preg_match('/Tìm thấy <strong>(\d+)<\/strong>/u', $lower['body'], $lowerCount);
+        $this->assertSame($upperCount[1] ?? null, $lowerCount[1] ?? null);
     }
 
     /**
@@ -41,8 +51,10 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchWithUnknownKeywordShowsNotFoundMessage(): void
     {
-        // Gợi ý: q=xyzabc123: 'Tìm thấy 0 sản phẩm'.
-        $this->markTestIncomplete('TODO: Từ khóa không có kết quả hiện thông báo không tìm thấy');
+        // CLI: php vendor/bin/phpunit --filter testSearchWithUnknownKeywordShowsNotFoundMessage
+        $actual = $this->get('search.php', ['q' => 'xyzabc123']);
+        $this->assertStringContainsString('Tìm thấy <strong>0</strong> sản phẩm', $actual['body']);
+        $this->assertStringContainsString('Không tìm thấy sản phẩm phù hợp', $actual['body']);
     }
 
     /**
@@ -50,7 +62,11 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchByCategoryOnlyReturnsThatCategory(): void
     {
-        $this->markTestIncomplete('TODO: Lọc theo danh mục chỉ trả về sản phẩm của danh mục');
+        // CLI: php vendor/bin/phpunit --filter testSearchByCategoryOnlyReturnsThatCategory
+        $actual = $this->get('search.php', ['cat_id' => 1]);
+        $this->assertSame(200, $actual['status']);
+        $this->assertStringContainsString('value="1" selected', $actual['body']);
+        $this->assertStringContainsString('Tìm thấy <strong>3</strong> sản phẩm', $actual['body']);
     }
 
     /**
@@ -59,9 +75,13 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchPriceRangeBoundaries(int $min, int $max, int $expectedCount): void
     {
-        // Gợi ý: Giá từ = giá đến = 2.700.000 phải ra Nike Air Max 270; giá từ lớn hơn giá đến phải ra
-        // 0 sản phẩm.
-        $this->markTestIncomplete('TODO: Lọc khoảng giá tính cả hai đầu mút');
+        // CLI: php vendor/bin/phpunit --filter testSearchPriceRangeBoundaries
+        $actual = $this->get('search.php', ['min_price' => $min, 'max_price' => $max]);
+        $this->assertStringContainsString(
+            'Tìm thấy <strong>' . $expectedCount . '</strong> sản phẩm',
+            $actual['body'],
+            'Expected result count and actual result count differ.'
+        );
     }
 
     /**
@@ -69,7 +89,13 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchCombinesKeywordCategoryAndPrice(): void
     {
-        $this->markTestIncomplete('TODO: Kết hợp từ khóa, danh mục và khoảng giá thì kết quả thỏa đồng thời cả ba');
+        // CLI: php vendor/bin/phpunit --filter testSearchCombinesKeywordCategoryAndPrice
+        $actual = $this->get('search.php', [
+            'q' => 'Nike', 'cat_id' => 1, 'min_price' => 1, 'max_price' => 99999999,
+        ]);
+        $this->assertSame(200, $actual['status']);
+        $this->assertStringContainsString('Nike', $actual['body']);
+        $this->assertStringContainsString('value="1" selected', $actual['body']);
     }
 
     /**
@@ -77,7 +103,12 @@ final class SearchPageTest extends HttpTestCase
      */
     public function testSearchResultsAreSortedByNameAndPaged(): void
     {
-        $this->markTestIncomplete('TODO: Kết quả sắp xếp theo tên A-Z, 4 sản phẩm mỗi trang');
+        // CLI: php vendor/bin/phpunit --filter testSearchResultsAreSortedByNameAndPaged
+        $actual = $this->get('search.php', ['q' => 'a']);
+        $this->assertSame(200, $actual['status']);
+        $this->assertLessThanOrEqual(4, substr_count($actual['body'], 'product.php?id='));
+        $first = strpos($actual['body'], 'product.php?id=');
+        $this->assertNotFalse($first, 'Expected at least one product on the first page.');
     }
 
     public static function priceRangeProvider(): array

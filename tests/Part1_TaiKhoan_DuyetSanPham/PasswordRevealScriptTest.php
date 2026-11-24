@@ -19,35 +19,77 @@ use PHPUnit\Framework\TestCase;
 final class PasswordRevealScriptTest extends TestCase
 {
     /**
-     * @testdox Đoạn script tìm mọi ô input type=password
+     * @testdox Nút xem mật khẩu hoạt động đúng trên form tài khoản
+     * @dataProvider revealScriptProvider
      */
-    public function testRevealScriptTargetsPasswordInputs(): void
+    public function testRevealScriptContainsRequiredBehavior(string $case, string $expected): void
     {
+        // Chạy: php vendor\phpunit\phpunit\phpunit tests\Part1_TaiKhoan_DuyetSanPham\PasswordRevealScriptTest.php --filter testRevealScriptContainsRequiredBehavior
+        // Dữ liệu vào: một chuỗi DOM/JavaScript bắt buộc; kết quả mong đợi:
+        // chuỗi phải tồn tại; kết quả thực tế đối chiếu bằng assertion.
         ob_start();
         include PROJECT_ROOT . '/includes/password-reveal.php';
         $html = (string) ob_get_clean();
-        $this->assertStringContainsString('<script>', $html);
-        $this->assertStringContainsString('input[type="password"]', $html);
+        $this->assertStringContainsString($expected, $html, 'Không đạt case: ' . $case);
     }
 
     /**
-     * @testdox Nút con mắt có thuộc tính trợ năng (aria-pressed)
+     * @testdox Nút xem mật khẩu dễ sử dụng
+     * @dataProvider accessibilityProvider
      */
-    public function testRevealButtonIsAccessible(): void
+    public function testRevealButtonIsAccessible(string $case, string $expected): void
     {
+        // Chạy: php vendor\phpunit\phpunit\phpunit tests\Part1_TaiKhoan_DuyetSanPham\PasswordRevealScriptTest.php --filter testRevealButtonIsAccessible
+        // Dữ liệu vào: thuộc tính accessibility; kết quả mong đợi: component
+        // phải chứa thuộc tính; kết quả thực tế đối chiếu bằng assertion.
         ob_start();
         include PROJECT_ROOT . '/includes/password-reveal.php';
         $html = (string) ob_get_clean();
-        $this->assertStringContainsString('aria-pressed', $html);
+        $this->assertStringContainsString($expected, $html, 'Không đạt case: ' . $case);
     }
 
     /**
-     * @testdox Nhấn nút đổi type giữa password và text
+     * @testdox Mật khẩu tự ẩn khi người dùng dừng xem
+     * @dataProvider autoHideProvider
      */
-    public function testRevealTogglesBetweenPasswordAndText(): void
+    public function testRevealHidesPasswordOnSafetyEvents(string $case, string $expected): void
     {
-        // Gợi ý: Đây là mã JavaScript; kiểm tra chuỗi "text"/"password" trong script hoặc dùng trình
-        // duyệt tự động ở mức hệ thống.
-        $this->markTestIncomplete('TODO: Nhấn nút đổi type giữa password và text');
+        // Chạy: php vendor\phpunit\phpunit\phpunit tests\Part1_TaiKhoan_DuyetSanPham\PasswordRevealScriptTest.php --filter testRevealHidesPasswordOnSafetyEvents
+        // Đây là Unit Test kiểm tra mã JavaScript được sinh ra, không cần browser.
+        ob_start();
+        include PROJECT_ROOT . '/includes/password-reveal.php';
+        $html = (string) ob_get_clean();
+        $this->assertStringContainsString($expected, $html, 'Không đạt case: ' . $case);
+    }
+
+    public static function revealScriptProvider(): array
+    {
+        return [
+            'form có phần xử lý nút xem mật khẩu' => ['form có phần xử lý nút xem mật khẩu', '<script>'],
+            'nhận biết đúng ô mật khẩu' => ['nhận biết đúng ô mật khẩu', 'input[type="password"]'],
+            'bấm giữ để xem mật khẩu' => ['bấm giữ để xem mật khẩu', "input.type = 'text'"],
+            'nhả nút để ẩn mật khẩu' => ['nhả nút để ẩn mật khẩu', "input.type = 'password'"],
+            'có khung chứa nút xem' => ['có khung chứa nút xem', "wrapper.className = 'password-reveal'"],
+            'có nút con mắt' => ['có nút con mắt', "button.className = 'password-reveal-button'"],
+        ];
+    }
+
+    public static function accessibilityProvider(): array
+    {
+        return [
+            'biết nút đang được giữ' => ['biết nút đang được giữ', 'aria-pressed'],
+            'có lời hướng dẫn cho người dùng' => ['có lời hướng dẫn cho người dùng', 'aria-label'],
+            'nút gắn với ô mật khẩu' => ['nút gắn với ô mật khẩu', 'aria-controls'],
+        ];
+    }
+
+    public static function autoHideProvider(): array
+    {
+        return [
+            'nhả nút chuột' => ['nhả nút chuột', "document.addEventListener('pointerup'"],
+            'thao tác bị dừng' => ['thao tác bị dừng', "document.addEventListener('pointercancel'"],
+            'nhấn phím Escape' => ['nhấn phím Escape', "event.key === 'Escape'"],
+            'chuyển sang trang khác' => ['chuyển sang trang khác', "window.addEventListener('pagehide'"],
+        ];
     }
 }

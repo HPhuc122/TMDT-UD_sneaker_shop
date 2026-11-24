@@ -17,7 +17,7 @@ if ($cat_id > 0) $where .= " AND p.category_id=$cat_id";
 if ($min_price > 0) $where .= " AND ROUND(p.import_price*(1+p.profit_rate/100)) >= $min_price";
 if ($max_price > 0) $where .= " AND ROUND(p.import_price*(1+p.profit_rate/100)) <= $max_price";
 
-$total = $conn->query("SELECT COUNT(*) as cnt FROM products p WHERE $where")->fetch_assoc()['cnt'];
+$total = (int) $conn->query("SELECT COUNT(*) as cnt FROM products p WHERE $where")->fetch_assoc()['cnt'];
 $total_pages = ceil($total / $per_page);
 
 $products = $conn->query("SELECT p.*, c.name as cat_name, ROUND(p.import_price*(1+p.profit_rate/100)) as sell_price

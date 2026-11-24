@@ -24,7 +24,7 @@ final class CategoryPageTest extends HttpTestCase
     public function testCategoryPageListsProductsOfThatCategory(): void
     {
         // Gợi ý: Ví dụ danh mục Sneaker Thể Thao có 3 sản phẩm trong dữ liệu mẫu.
-        $this->markTestIncomplete('TODO: Chỉ hiển thị sản phẩm thuộc danh mục được chọn');
+        $response=$this->get('category.php',['id'=>1]); $this->assertSame(200,$response['status']); $this->assertStringContainsString('product.php?id=',$response['body']);
     }
 
     /**
@@ -32,7 +32,7 @@ final class CategoryPageTest extends HttpTestCase
      */
     public function testCategoryPageWithUnknownIdHandledGracefully(): void
     {
-        $this->markTestIncomplete('TODO: Mã danh mục không tồn tại không gây lỗi');
+        $response=$this->get('category.php',['id'=>999999]); $this->assertSame(200,$response['status']); $this->assertStringNotContainsString('Warning',$response['body']);
     }
 
     /**
@@ -40,6 +40,10 @@ final class CategoryPageTest extends HttpTestCase
      */
     public function testCategoryPagePagination(): void
     {
-        $this->markTestIncomplete('TODO: Phân trang hoạt động đúng');
+        // Dữ liệu mẫu của danh mục 1 có ít hơn 8 sản phẩm, nên kết quả dự kiến
+        // không tạo trang 2 và không có liên kết phân trang giả.
+        $response = $this->get('category.php', ['id' => 1, 'page' => 2]);
+        $this->assertSame(200, $response['status']);
+        $this->assertStringNotContainsString('category.php?id=1&page=2', $response['body']);
     }
 }

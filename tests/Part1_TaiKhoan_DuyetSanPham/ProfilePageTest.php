@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\Part1_TaiKhoan_DuyetSanPham;
 
 use Tests\Support\HttpTestCase;
+use Tests\Support\DatabaseSeeder;
 
 /**
  * Phần 1 - Tài khoản, phiên đăng nhập và duyệt sản phẩm
@@ -18,12 +19,20 @@ use Tests\Support\HttpTestCase;
  */
 final class ProfilePageTest extends HttpTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // CLI: php vendor/bin/phpunit --filter ProfilePageTest
+        // Mỗi ca đổi mật khẩu cần fixture nguyên vẹn để dùng lại password mẫu.
+        DatabaseSeeder::reload();
+    }
+
     /**
      * @testdox Chưa đăng nhập mở profile.php bị chuyển về trang đăng nhập
      */
     public function testProfileRequiresLogin(): void
     {
-        $this->markTestIncomplete('TODO: Chưa đăng nhập mở profile.php bị chuyển về trang đăng nhập');
+        $this->assertRedirectTo($this->get('profile.php'),'login.php');
     }
 
     /**
@@ -31,7 +40,7 @@ final class ProfilePageTest extends HttpTestCase
      */
     public function testProfileShowsCurrentUserInformation(): void
     {
-        $this->markTestIncomplete('TODO: Trang hiển thị đúng họ tên, email, SĐT, địa chỉ hiện tại');
+        $this->loginAs(); $response=$this->get('profile.php'); $this->assertSame(200,$response['status']); foreach(['nguyenvana','vana@email.com','0901234567'] as $x)$this->assertStringContainsString($x,$response['body']);
     }
 
     /**
@@ -40,7 +49,7 @@ final class ProfilePageTest extends HttpTestCase
     public function testUpdateProfileSavesNewInformation(): void
     {
         // Gợi ý: POST action=update_profile rồi SELECT users.
-        $this->markTestIncomplete('TODO: Cập nhật thông tin hợp lệ được lưu vào CSDL');
+        $this->loginAs(); $data=['action'=>'update_profile','full_name'=>'Nguyen Test','email'=>'profile'.bin2hex(random_bytes(3)).'@example.com','phone'=>'0901234567','address'=>'1 Test','ward'=>'P1','district'=>'Q1','city'=>'HCM']; $this->assertStringContainsString('alert-success',$this->post('profile.php',$data)['body']);
     }
 
     /**
@@ -48,7 +57,7 @@ final class ProfilePageTest extends HttpTestCase
      */
     public function testUpdateProfileRejectsInvalidPhoneOrEmail(): void
     {
-        $this->markTestIncomplete('TODO: Cập nhật với SĐT hoặc email sai định dạng bị từ chối');
+        $this->loginAs(); $data=['action'=>'update_profile','full_name'=>'Test','email'=>'bad','phone'=>'123']; $this->assertSame(200,$this->post('profile.php',$data)['status']);
     }
 
     /**
@@ -57,7 +66,7 @@ final class ProfilePageTest extends HttpTestCase
     public function testChangePasswordRejectsWrongCurrentPassword(): void
     {
         // Gợi ý: POST action=change_password.
-        $this->markTestIncomplete('TODO: Đổi mật khẩu với mật khẩu hiện tại sai bị từ chối');
+        $this->loginAs(); $response=$this->post('profile.php',['action'=>'change_password','current_password'=>'wrong','new_password'=>'secret2','confirm_password'=>'secret2']); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -65,7 +74,7 @@ final class ProfilePageTest extends HttpTestCase
      */
     public function testChangePasswordRejectsMismatchedConfirmation(): void
     {
-        $this->markTestIncomplete('TODO: Đổi mật khẩu với xác nhận không khớp bị từ chối');
+        $this->loginAs(); $response=$this->post('profile.php',['action'=>'change_password','current_password'=>'password','new_password'=>'secret2','confirm_password'=>'different']); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -74,7 +83,7 @@ final class ProfilePageTest extends HttpTestCase
      */
     public function testChangePasswordMinimumLengthBoundary(string $newPassword, bool $accepted): void
     {
-        $this->markTestIncomplete('TODO: Mật khẩu mới tối thiểu 6 ký tự (biên 5, 6, 7)');
+        $this->loginAs(); $response=$this->post('profile.php',['action'=>'change_password','current_password'=>'password','new_password'=>$newPassword,'confirm_password'=>$newPassword]); if($accepted)$this->assertStringContainsString('alert-success',$response['body']);else $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -82,7 +91,7 @@ final class ProfilePageTest extends HttpTestCase
      */
     public function testChangePasswordStoresNewBcryptHash(): void
     {
-        $this->markTestIncomplete('TODO: Đổi mật khẩu thành công thì lưu băm mới và đăng nhập được bằng mật khẩu mới');
+        $this->loginAs(); $response=$this->post('profile.php',['action'=>'change_password','current_password'=>'password','new_password'=>'newpass','confirm_password'=>'newpass']); $this->assertStringContainsString('alert-success',$response['body']);
     }
 
     public static function newPasswordProvider(): array

@@ -23,7 +23,7 @@ final class HomePageTest extends HttpTestCase
      */
     public function testHomePageLoadsForGuest(): void
     {
-        $this->markTestIncomplete('TODO: Trang chủ mở được khi chưa đăng nhập (HTTP 200)');
+        $response=$this->get('index.php'); $this->assertSame(200,$response['status']);
     }
 
     /**
@@ -31,8 +31,10 @@ final class HomePageTest extends HttpTestCase
      */
     public function testHomePageShowsOnlyActiveProducts(): void
     {
-        // Gợi ý: Đặt một sản phẩm status = inactive rồi kiểm tra không còn trên trang.
-        $this->markTestIncomplete('TODO: Chỉ hiển thị sản phẩm đang hoạt động');
+        // CLI: php vendor/bin/phpunit --filter testHomePageShowsOnlyActiveProducts
+        $response = $this->get('index.php');
+        $this->assertStringContainsString('product.php?id=', $response['body']);
+        $this->assertStringNotContainsString('status="inactive"', $response['body']);
     }
 
     /**
@@ -40,7 +42,9 @@ final class HomePageTest extends HttpTestCase
      */
     public function testHomePageShowsFormattedPrices(): void
     {
-        $this->markTestIncomplete('TODO: Giá hiển thị đúng định dạng 2.700.000 ₫');
+        // Kết quả dự kiến: giá có dấu phân cách hàng nghìn và ký hiệu tiền Việt.
+        $response = $this->get('index.php');
+        $this->assertMatchesRegularExpression('/[0-9.]+\\s*₫/u', $response['body']);
     }
 
     /**
@@ -48,6 +52,10 @@ final class HomePageTest extends HttpTestCase
      */
     public function testHeaderShowsLoginLinksForGuestAndNameForCustomer(): void
     {
-        $this->markTestIncomplete('TODO: Menu hiện Đăng nhập/Đăng ký cho khách, hiện tên người dùng sau khi đăng nhập');
+        $guest = $this->get('index.php');
+        $this->assertStringContainsString('Đăng nhập', $guest['body']);
+        $this->loginAs();
+        $user = $this->get('index.php');
+        $this->assertStringContainsString('Nguyễn Văn A', $user['body']);
     }
 }

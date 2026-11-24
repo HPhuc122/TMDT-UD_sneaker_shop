@@ -25,7 +25,7 @@ final class AdminAuthTest extends HttpTestCase
     public function testAdminLoginSucceedsWithAdminAccount(): void
     {
         // Gợi ý: POST admin/login.php bằng admin/password.
-        $this->markTestIncomplete('TODO: Admin đăng nhập thành công và vào Dashboard');
+        $this->assertRedirectTo($this->loginAsAdmin(),'index.php');
     }
 
     /**
@@ -34,7 +34,7 @@ final class AdminAuthTest extends HttpTestCase
     public function testAdminLoginRejectsCustomerAccount(): void
     {
         // Gợi ý: Dùng nguyenvana/password ở admin/login.php.
-        $this->markTestIncomplete('TODO: Tài khoản khách hàng không đăng nhập được trang quản trị');
+        $response=$this->post('admin/login.php',['username'=>'nguyenvana','password'=>'password']); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -43,7 +43,7 @@ final class AdminAuthTest extends HttpTestCase
     public function testAdminLoginRejectsWrongPassword(): void
     {
         // Gợi ý: Mong đợi thông báo lỗi và ở lại trang đăng nhập.
-        $this->markTestIncomplete('TODO: Sai mật khẩu admin bị từ chối');
+        $response=$this->post('admin/login.php',['username'=>'admin','password'=>'wrong']); $this->assertStringContainsString('alert-danger',$response['body']);
     }
 
     /**
@@ -53,7 +53,7 @@ final class AdminAuthTest extends HttpTestCase
     public function testAdminPagesRedirectGuestToAdminLogin(string $page): void
     {
         // Gợi ý: Thử lần lượt các trang quản trị.
-        $this->markTestIncomplete('TODO: Chưa đăng nhập mở trang quản trị thì bị chuyển về admin/login.php');
+        $this->assertRedirectTo($this->get($page),'login.php');
     }
 
     /**
@@ -61,8 +61,12 @@ final class AdminAuthTest extends HttpTestCase
      */
     public function testAdminLogoutDestroysAdminSession(): void
     {
-        // Gợi ý: GET admin/logout.php rồi GET admin/index.php.
-        $this->markTestIncomplete('TODO: Đăng xuất admin xóa phiên quản trị');
+        // CLI: php vendor/bin/phpunit --filter testAdminLogoutDestroysAdminSession
+        // 1) Đăng nhập admin; 2) gọi đúng endpoint logout của hệ thống;
+        // 3) truy cập lại dashboard và đối chiếu kết quả thực tế là redirect login.
+        $this->loginAsAdmin();
+        $this->assertRedirectTo($this->get('admin/login.php?action=logout'), 'login.php');
+        $this->assertRedirectTo($this->get('admin/index.php'), 'login.php');
     }
 
     /**
@@ -71,7 +75,7 @@ final class AdminAuthTest extends HttpTestCase
     public function testAdminAndCustomerSessionsAreIndependent(): void
     {
         // Gợi ý: Đăng nhập cả hai trong cùng cookie jar; đăng xuất bên này không ảnh hưởng bên kia.
-        $this->markTestIncomplete('TODO: Phiên admin và phiên khách hàng độc lập (USER_SESSION_NAME khác ADMIN_SESSION_NAME)');
+        $this->loginAs(); $this->assertRedirectTo($this->loginAsAdmin(),'index.php');
     }
 
     public static function adminPageProvider(): array

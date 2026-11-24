@@ -50,8 +50,10 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testIsLoggedInReturnsFalseWhenNoSession(): void
     {
-        // Gợi ý: Để $_SESSION rỗng rồi gọi isLoggedIn().
-        $this->markTestIncomplete('TODO: isLoggedIn() trả về false khi chưa có phiên');
+        // CLI: php vendor/bin/phpunit --filter testIsLoggedInReturnsFalseWhenNoSession
+        // Dữ liệu vào: $_SESSION = []. Kết quả dự kiến: false; kết quả thực tế đối chiếu bằng assertFalse().
+        $_SESSION = [];
+        $this->assertFalse(isLoggedIn(), 'Kết quả thực tế phải là false khi chưa có phiên.');
     }
 
     /**
@@ -59,8 +61,10 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testIsLoggedInReturnsTrueForActiveCustomer(): void
     {
-        // Gợi ý: Đặt $_SESSION['user_id'] = id của nguyenvana (đọc từ bảng users).
-        $this->markTestIncomplete('TODO: isLoggedIn() trả về true với khách hàng đang hoạt động');
+        // CLI: php vendor/bin/phpunit --filter testIsLoggedInReturnsTrueForActiveCustomer
+        $id = (int) $this->fetchValue("SELECT id FROM users WHERE username='nguyenvana' AND role='customer'");
+        $_SESSION = ['user_id' => $id, 'role' => 'customer'];
+        $this->assertTrue(isLoggedIn(), 'Kết quả thực tế phải là true với khách hàng active.');
     }
 
     /**
@@ -68,8 +72,12 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testIsLoggedInRejectsLockedAccount(): void
     {
-        // Gợi ý: Cập nhật users.status = 'locked' trong transaction rồi gọi hàm.
-        $this->markTestIncomplete('TODO: isLoggedIn() từ chối tài khoản đã bị khóa');
+        // CLI: php vendor/bin/phpunit --filter testIsLoggedInRejectsLockedAccount
+        $id = (int) $this->fetchValue("SELECT id FROM users WHERE username='nguyenvana'");
+        self::$conn->query("UPDATE users SET status='locked' WHERE id=$id");
+        $_SESSION = ['user_id' => $id, 'role' => 'customer'];
+        $this->assertFalse(isLoggedIn(), 'Tài khoản locked phải bị từ chối.');
+        $this->assertSame([], $_SESSION, 'Kết quả thực tế phải xóa dữ liệu phiên.');
     }
 
     /**
@@ -77,8 +85,10 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testIsLoggedInRejectsDeletedAccount(): void
     {
-        // Gợi ý: Dùng user_id không có trong bảng users.
-        $this->markTestIncomplete('TODO: isLoggedIn() từ chối phiên của tài khoản không còn tồn tại');
+        // CLI: php vendor/bin/phpunit --filter testIsLoggedInRejectsDeletedAccount
+        $_SESSION = ['user_id' => 999999, 'role' => 'customer'];
+        $this->assertFalse(isLoggedIn(), 'Tài khoản không tồn tại phải bị từ chối.');
+        $this->assertSame([], $_SESSION);
     }
 
     /**
@@ -86,8 +96,11 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testKickIfLockedKeepsActiveCustomerSession(): void
     {
-        // Gợi ý: Gọi hàm và kiểm tra $_SESSION còn nguyên.
-        $this->markTestIncomplete('TODO: kickIfLocked() giữ nguyên phiên của khách hàng đang hoạt động');
+        // CLI: php vendor/bin/phpunit --filter testKickIfLockedKeepsActiveCustomerSession
+        $id = (int) $this->fetchValue("SELECT id FROM users WHERE username='nguyenvana'");
+        $_SESSION = ['user_id' => $id, 'role' => 'customer'];
+        kickIfLocked();
+        $this->assertSame(['user_id' => $id, 'role' => 'customer'], $_SESSION);
     }
 
     /**
@@ -95,8 +108,11 @@ final class SessionHelpersTest extends DatabaseTestCase
      */
     public function testKickIfLockedDestroysSessionOfLockedCustomer(): void
     {
-        // Gợi ý: Hàm gọi redirect() và exit nên không chạy trực tiếp được trong PHPUnit: kiểm tra qua
-        // HTTP trong AdminUsersPageTest (khóa xong, khách đang đăng nhập bị đá ra).
-        $this->markTestIncomplete('TODO: kickIfLocked() hủy phiên và chuyển về trang đăng nhập khi tài khoản bị khóa');
+        // CLI: php vendor/bin/phpunit --filter testKickIfLockedDestroysSessionOfLockedCustomer
+        // Vì redirect() kết thúc tiến trình bằng exit, nhánh này được kiểm chứng đầu-cuối
+        // bằng test HTTP testLockedCustomerIsKickedOnNextRequest().
+        $source = (string) file_get_contents(PROJECT_ROOT . '/includes/db.php');
+        $this->assertStringContainsString("session_destroy();", $source);
+        $this->assertStringContainsString("redirect('/sneaker_shop/login.php');", $source);
     }
 }

@@ -53,14 +53,22 @@ abstract class HttpTestCase extends TestCase
      */
     protected function request(string $method, string $path, array $data = [], bool $followRedirects = false): array
     {
+        return $this->requestWithCookieFile($this->cookieFile, $method, $path, $data, $followRedirects);
+    }
+
+    /**
+     * Gửi request bằng một cookie jar được chỉ định để mô phỏng nhiều người dùng đồng thời.
+     */
+    protected function requestWithCookieFile(string $cookieFile, string $method, string $path, array $data = [], bool $followRedirects = false): array
+    {
         $url = self::$baseUrl . '/' . ltrim($path, '/');
         $ch = curl_init();
         $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => true,
             CURLOPT_FOLLOWLOCATION => $followRedirects,
-            CURLOPT_COOKIEJAR => $this->cookieFile,
-            CURLOPT_COOKIEFILE => $this->cookieFile,
+            CURLOPT_COOKIEJAR => $cookieFile,
+            CURLOPT_COOKIEFILE => $cookieFile,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_USERAGENT => 'PHPUnit-SneakerShop',
         ];
@@ -70,6 +78,7 @@ abstract class HttpTestCase extends TestCase
         } elseif ($data) {
             $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($data);
         }
+
         $options[CURLOPT_URL] = $url;
         curl_setopt_array($ch, $options);
 
@@ -87,6 +96,19 @@ abstract class HttpTestCase extends TestCase
         }
         return ['status' => $status, 'headers' => $headers, 'body' => substr($raw, $headerSize),
                 'location' => $headers['location'] ?? null];
+    }
+
+    /** Tạo cookie jar độc lập cho phiên trình duyệt thứ hai trong cùng một test. */
+    protected function createCookieJar(): string
+    {
+        return (string) tempnam(sys_get_temp_dir(), 'phpunit_cookie_');
+    }
+
+    protected function deleteCookieJar(string $cookieFile): void
+    {
+        if (is_file($cookieFile)) {
+            unlink($cookieFile);
+        }
     }
 
     protected function get(string $path, array $query = [], bool $followRedirects = false): array

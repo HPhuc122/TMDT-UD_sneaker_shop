@@ -1,10 +1,11 @@
 <?php
 // profile.php
-require_once 'includes/header.php';
-
+require_once 'includes/db.php';
 if (!isLoggedIn()) {
     redirect('login.php');
 }
+
+require_once 'includes/header.php';
 
 $uid = (int)$_SESSION['user_id'];
 $msg = '';
