@@ -44,8 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $value          = (float)($_POST['discount_value'] ?? 0);
     $max_discount_raw = $_POST['max_discount_amount'] ?? '';
     $max_discount   = $max_discount_raw === '' ? 'NULL' : (float)$max_discount_raw;
-    $min_order      = (float)$_POST['min_order_amount'];
-    $max_uses       = !empty($_POST['max_uses']) ? (int)$_POST['max_uses'] : 'NULL';
+    $min_order_raw  = $_POST['min_order_amount'] ?? '0';
+    $min_order      = is_numeric($min_order_raw) ? (float)$min_order_raw : -1;
+    $max_uses_raw   = $_POST['max_uses'] ?? '';
+    $max_uses       = $max_uses_raw === '' ? 'NULL' : filter_var($max_uses_raw, FILTER_VALIDATE_INT);
     $max_per_user   = (int)$_POST['max_uses_per_user'];
     $start_date_val = $_POST['start_date'] ?? '';
     $end_date_val   = $_POST['end_date']   ?? '';
@@ -65,13 +67,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $start_date_val = $start_date_val === '' ? '' : date('Y-m-d\TH:i:s', discountDateTimestamp($start_date_val));
         $end_date_val = $end_date_val === '' ? '' : date('Y-m-d\TH:i:s', discountDateTimestamp($end_date_val));
     }
+    // Validate the selected scope against actual records, not just non-empty input.
+    $scope_error = '';
+    if (!in_array($apply_to, ['all', 'category', 'product'], true)) {
+        $scope_error = 'Phạm vi áp dụng không hợp lệ.';
+    } elseif ($apply_to !== 'all') {
+        $selected = $apply_to === 'category' ? $categories : $products;
+        $label = $apply_to === 'category' ? 'danh mục' : 'sản phẩm';
+        if (!is_array($selected) || !$selected) {
+            $scope_error = 'Vui lòng chọn ít nhất một ' . $label . ' áp dụng.';
+        } else {
+            $ids = [];
+            foreach ($selected as $selectedId) {
+                $validId = filter_var($selectedId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($validId === false) { $scope_error = 'Danh sách ' . $label . ' không hợp lệ.'; break; }
+                $ids[] = $validId;
+            }
+            if ($scope_error === '') {
+                $ids = array_values(array_unique($ids));
+                $table = $apply_to === 'category' ? 'categories' : 'products';
+                $active = $apply_to === 'product' ? " AND status='active'" : '';
+                $found = $conn->query('SELECT COUNT(*) AS n FROM ' . $table . ' WHERE id IN (' . implode(',', $ids) . ')' . $active)->fetch_assoc();
+                if ((int)$found['n'] !== count($ids)) $scope_error = 'Danh sách ' . $label . ' không hợp lệ.';
+                if ($apply_to === 'category') $categories = $ids; else $products = $ids;
+            }
+        }
+    }
     if ($discount_errors) {
         $msg = '<div class="alert alert-danger">Vui lòng kiểm tra các trường được báo lỗi bên dưới.</div>';
     } elseif (!$code) {
         $msg = '<div class="alert alert-danger">Vui lòng nhập mã code.</div>';
-    } elseif ($max_uses !== 'NULL' && $max_uses < 1) {
+    } elseif ($max_uses !== 'NULL' && ($max_uses === false || $max_uses < 1)) {
         $msg = '<div class="alert alert-danger">Tổng lượt dùng phải ít nhất là 1.</div>';
-    } elseif ($max_per_user < 1) {
+    } elseif (!is_finite($min_order) || $min_order < 0) {
+        $msg = '<div class="alert alert-danger">Giá trị đơn hàng tối thiểu phải là số không âm.</div>';
+    } elseif ($scope_error !== '') {
+        $msg = '<div class="alert alert-danger">' . htmlspecialchars($scope_error) . '</div>';
+} elseif ($max_per_user < 1) {
         $msg = '<div class="alert alert-danger">Số lượt dùng mỗi khách phải ít nhất là 1.</div>';
     } elseif ($max_uses !== 'NULL' && $max_per_user > $max_uses) {
         $msg = '<div class="alert alert-danger">Số lượt dùng mỗi khách không được lớn hơn tổng lượt dùng của mã.</div>';
