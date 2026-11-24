@@ -44,9 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $min_order      = (float)$_POST['min_order_amount'];
     $max_uses       = !empty($_POST['max_uses']) ? (int)$_POST['max_uses'] : 'NULL';
     $max_per_user   = (int)$_POST['max_uses_per_user'];
-    $start_date_val = $_POST['start_date'] ?? '';
-    $end_date_val   = $_POST['end_date']   ?? '';
     $now_str        = date('Y-m-d\TH:i');
+    $start_date_val = ($_POST['action'] === 'add')
+        ? date('Y-m-d H:i:s')
+        : ($_POST['start_date'] ?? '');
+    $end_date_val   = $_POST['end_date']   ?? '';
     $apply_to       = sanitize($conn, $_POST['apply_to'] ?? 'all');
     $categories     = $_POST['categories'] ?? [];
     $products       = $_POST['products'] ?? [];
@@ -63,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $msg = '<div class="alert alert-danger">Số lượt dùng mỗi khách phải ít nhất là 1.</div>';
     } elseif ($max_uses !== 'NULL' && $max_per_user > $max_uses) {
         $msg = '<div class="alert alert-danger">Số lượt dùng mỗi khách không được lớn hơn tổng lượt dùng của mã.</div>';
-    } elseif ($start_date_val && $start_date_val < $now_str && !isset($_GET['edit'])) {
+    } elseif ($_POST['action'] !== 'add' && $start_date_val && $start_date_val < $now_str && !isset($_GET['edit'])) {
         $msg = '<div class="alert alert-danger">Ngày bắt đầu không được nhỏ hơn thời gian hiện tại.</div>';
     } elseif ($start_date_val && $end_date_val) {
         if ($start_date_val === $end_date_val) {
@@ -175,7 +177,8 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Ngày bắt đầu</label>
-                            <input type="datetime-local" name="start_date" class="form-control">
+                            <input type="datetime-local" name="start_date" class="form-control"
+                                value="<?= date('Y-m-d\TH:i') ?>" min="<?= date('Y-m-d\TH:i') ?>" readonly>
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Ngày kết thúc</label>
