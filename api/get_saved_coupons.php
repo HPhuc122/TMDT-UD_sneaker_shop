@@ -38,15 +38,7 @@ $coupons = [];
 while ($d = $res->fetch_assoc()) {
     $id = $d['id'];
     
-    // Filter Date and Usage in PHP
-    $start_time = $d['start_date'] ? strtotime($d['start_date']) : null;
-    $end_time   = $d['end_date'] ? strtotime($d['end_date']) : null;
-    $max_uses   = $d['max_uses'] !== null ? (int)$d['max_uses'] : null;
-    $used_count = (int)$d['total_used'];
-
-    if ($start_time !== null && $now_time < $start_time) continue;
-    if ($end_time !== null && $now_time > $end_time) continue;
-    if ($max_uses !== null && $used_count >= $max_uses) continue;
+    if (!isDiscountCurrentlyValid($d, $now_time)) continue;
 
     $is_applicable = false;
     $reason = "";

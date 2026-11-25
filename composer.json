@@ -1,0 +1,54 @@
+{
+    "name": "ktpm-sang-thu5/sneaker-shop",
+    "description": "Website thương mại điện tử bán giày Sneaker (PHP thuần) - bộ Unit Test bằng PHPUnit",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1",
+        "ext-mysqli": "*"
+    },
+    "require-dev": {
+        "ext-curl": "*",
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "process-timeout": 0,
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:doc": "phpunit --testdox",
+        "test:part1": "phpunit --testsuite Part1",
+        "test:part2": "phpunit --testsuite Part2",
+        "test:part3": "phpunit --testsuite Part3",
+        "test:part4": "phpunit --testsuite Part4",
+        "test:unit": "phpunit --group unit",
+        "test:integration": "phpunit --group integration",
+        "test:http": "phpunit --group http",
+        "serve": [
+            "@putenv DB_NAME=sneaker_shop_test",
+            "@php -S localhost:8000"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Chạy toàn bộ Unit Test (4 phần)",
+        "test:doc": "Chạy toàn bộ và in danh sách test dạng dễ đọc (TestDox)",
+        "test:part1": "Phần 1: Tài khoản, phiên đăng nhập và duyệt sản phẩm",
+        "test:part2": "Phần 2: Giỏ hàng và khuyến mãi",
+        "test:part3": "Phần 3: Quản trị sản phẩm, kho, đơn hàng và tự động hủy",
+        "test:part4": "Phần 4: Đặt hàng và thanh toán",
+        "test:unit": "Chỉ chạy test hàm thuần (không đụng dữ liệu)",
+        "test:integration": "Chỉ chạy test hàm có dùng CSDL test",
+        "test:http": "Chỉ chạy test trang/API qua HTTP (cần chạy composer serve ở cửa sổ khác)",
+        "serve": "Chạy website với CSDL test tại http://localhost:8000 để chạy test HTTP"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

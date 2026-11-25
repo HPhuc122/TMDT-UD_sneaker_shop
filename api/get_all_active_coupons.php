@@ -12,23 +12,7 @@ $coupons = [];
 while ($d = $res->fetch_assoc()) {
     $id = $d['id'];
     
-    // Filter Date and Usage in PHP (treat start/end as full days)
-    $start_time = null;
-    $end_time = null;
-    if (!empty($d['start_date'])) {
-        $day = date('Y-m-d', strtotime($d['start_date']));
-        $start_time = strtotime($day . ' 00:00:00');
-    }
-    if (!empty($d['end_date'])) {
-        $day = date('Y-m-d', strtotime($d['end_date']));
-        $end_time = strtotime($day . ' 23:59:59');
-    }
-    $max_uses   = $d['max_uses'] !== null ? (int)$d['max_uses'] : null;
-    $used_count = (int)$d['total_used'];
-
-    if ($start_time !== null && $now_time < $start_time) continue;
-    if ($end_time !== null && $now_time > $end_time) continue;
-    if ($max_uses !== null && $used_count >= $max_uses) continue;
+    if (!isDiscountCurrentlyValid($d, $now_time)) continue;
 
     $d['is_saved'] = false;
     if (isLoggedIn()) {

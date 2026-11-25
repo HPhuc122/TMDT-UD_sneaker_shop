@@ -80,58 +80,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <h4 class="text-center mb-4 fw-bold">Đăng ký tài khoản</h4>
 
                     <?php if ($error): ?>
-                    <div class="alert alert-danger"><?= $error ?></div>
+                    <div id="serverErrors" class="alert alert-danger" role="alert" data-field="<?= $error === 'Tên đăng nhập đã tồn tại.' ? 'username' : '' ?>"><?= $error ?></div>
                     <?php endif; ?>
                     <?php if ($success): ?>
                     <div class="alert alert-success"><?= $success ?></div>
                     <?php endif; ?>
 
+                    <p class="text-muted small mb-3">Các ô có dấu <span class="text-danger">*</span> là bắt buộc.</p>
+
                     <form method="POST" novalidate onsubmit="return validateForm()">
                         <h6 class="text-muted fw-bold mb-3">THÔNG TIN TÀI KHOẢN</h6>
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
-                                <label class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                                <input type="text" name="username" class="form-control" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
+                                <label class="form-label" for="username">Tên đăng nhập <span class="text-danger">*</span></label>
+                                <input type="text" name="username" class="form-control" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" placeholder="VD: nguyenvan_a" id="username" aria-describedby="usernameHelp">
+                                <div id="usernameHelp" class="form-text">Ít nhất 4 ký tự, chỉ gồm chữ cái không dấu (A–Z, a–z), số và dấu gạch dưới (_). Không dùng khoảng trắng.</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Họ và tên <span class="text-danger">*</span></label>
-                                <input type="text" name="full_name" class="form-control" value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>">
+                                <label class="form-label" for="full_name">Họ và tên <span class="text-danger">*</span></label>
+                                <input type="text" name="full_name" class="form-control" value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>" placeholder="VD: Nguyễn Văn An" id="full_name" aria-describedby="full_nameHelp">
+                                <div id="full_nameHelp" class="form-text">Nhập đầy đủ họ và tên, có thể dùng tiếng Việt có dấu.</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                                <input type="password" name="password" id="password" class="form-control" autocomplete="new-password">
+                                <label class="form-label" for="password">Mật khẩu <span class="text-danger">*</span></label>
+                                <input type="password" name="password" id="password" class="form-control" autocomplete="new-password" placeholder="Nhập ít nhất 6 ký tự" aria-describedby="passwordHelp">
+                                <div id="passwordHelp" class="form-text">Ít nhất 6 ký tự. Nên kết hợp chữ hoa, chữ thường, số và ký tự đặc biệt để tăng độ an toàn.</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Xác nhận mật khẩu <span class="text-danger">*</span></label>
-                                <input type="password" name="confirm_password" id="confirm_password" class="form-control" autocomplete="new-password">
+                                <label class="form-label" for="confirm_password">Xác nhận mật khẩu <span class="text-danger">*</span></label>
+                                <input type="password" name="confirm_password" id="confirm_password" class="form-control" autocomplete="new-password" placeholder="Nhập lại mật khẩu" aria-describedby="confirm_passwordHelp">
+                                <div id="confirm_passwordHelp" class="form-text">Nhập lại chính xác mật khẩu ở trên, kể cả chữ hoa và chữ thường.</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Email <span class="text-danger">*</span></label>
-                                <input type="text" name="email" class="form-control" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+                                <label class="form-label" for="email">Email <span class="text-danger">*</span></label>
+                                <input type="text" name="email" class="form-control" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="VD: ban@example.com" id="email" aria-describedby="emailHelp">
+                                <div id="emailHelp" class="form-text">Nhập email đúng định dạng, ví dụ: ban@example.com.</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
-                                <input type="text" name="phone" class="form-control" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
+                                <label class="form-label" for="phone">Số điện thoại <span class="text-danger">*</span></label>
+                                <input type="text" name="phone" class="form-control" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>" placeholder="VD: 0901234567" id="phone" aria-describedby="phoneHelp">
+                                <div id="phoneHelp" class="form-text">Gồm 10–11 chữ số, bắt đầu bằng số 0. Không dùng khoảng trắng hoặc dấu gạch ngang.</div>
                             </div>
                         </div>
 
                         <h6 class="text-muted fw-bold mb-3">ĐỊA CHỈ GIAO HÀNG</h6>
                         <div class="row g-3 mb-4">
                             <div class="col-12">
-                                <label class="form-label">Địa chỉ (số nhà, tên đường) <span class="text-danger">*</span></label>
-                                <input type="text" name="address" class="form-control" value="<?= htmlspecialchars($_POST['address'] ?? '') ?>">
+                                <label class="form-label" for="address">Địa chỉ (số nhà, tên đường) <span class="text-danger">*</span></label>
+                                <input type="text" name="address" class="form-control" value="<?= htmlspecialchars($_POST['address'] ?? '') ?>" placeholder="VD: 12 Nguyễn Huệ" id="address">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Phường/Xã <span class="text-danger">*</span></label>
-                                <input type="text" name="ward" class="form-control" value="<?= htmlspecialchars($_POST['ward'] ?? '') ?>">
+                                <label class="form-label" for="ward">Phường/Xã <span class="text-danger">*</span></label>
+                                <input type="text" name="ward" class="form-control" value="<?= htmlspecialchars($_POST['ward'] ?? '') ?>" placeholder="VD: Bến Nghé" id="ward">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Quận/Huyện <span class="text-danger">*</span></label>
-                                <input type="text" name="district" class="form-control" value="<?= htmlspecialchars($_POST['district'] ?? '') ?>">
+                                <label class="form-label" for="district">Quận/Huyện <span class="text-danger">*</span></label>
+                                <input type="text" name="district" class="form-control" value="<?= htmlspecialchars($_POST['district'] ?? '') ?>" placeholder="VD: Quận 1" id="district">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Tỉnh/Thành phố <span class="text-danger">*</span></label>
-                                <input type="text" name="city" class="form-control" value="<?= htmlspecialchars($_POST['city'] ?? '') ?>">
+                                <label class="form-label" for="city">Tỉnh/Thành phố <span class="text-danger">*</span></label>
+                                <input type="text" name="city" class="form-control" value="<?= htmlspecialchars($_POST['city'] ?? '') ?>" placeholder="VD: TP. Hồ Chí Minh" id="city">
                             </div>
                         </div>
 
@@ -147,7 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    function validateForm() {
+    let registrationValidationStarted = false;
+
+    function validateForm(scrollToErrors = true) {
+        registrationValidationStarted = true;
         const errors = [];
         const username = document.querySelector('[name=username]').value.trim();
         const fullname = document.querySelector('[name=full_name]').value.trim();
@@ -192,13 +203,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 document.querySelector('form').prepend(box);
             }
             box.className = 'alert alert-danger mb-3';
+            box.setAttribute('aria-live', 'polite');
             box.innerHTML = '<strong><i class="bi bi-exclamation-circle me-2"></i>Vui lòng kiểm tra lại:</strong><ul class="mb-0 mt-2">'
                 + errors.map(e => '<li>' + e.slice(2) + '</li>').join('') + '</ul>';
-            box.scrollIntoView({behavior: 'smooth', block: 'center'});
+            if (scrollToErrors) box.scrollIntoView({behavior: 'smooth', block: 'center'});
             return false;
         }
+        document.getElementById('jsErrors')?.remove();
         return true;
     }
+
+    const registrationForm = document.querySelector('form');
+    const serverErrorBox = document.getElementById('serverErrors');
+    // A duplicate-username result remains relevant until that username changes.
+    const serverErrorFields = serverErrorBox
+        ? Array.from(registrationForm.querySelectorAll('input')).filter(input =>
+            !serverErrorBox.dataset.field || input.name === serverErrorBox.dataset.field)
+        : [];
+    const serverErrorValues = serverErrorFields.map(input => input.type === 'password' ? input.value : input.value.trim());
+    const refreshRegistrationErrors = () => {
+        if (serverErrorBox) {
+            serverErrorBox.hidden = serverErrorFields.some((input, index) => {
+                const value = input.name === 'password' || input.name === 'confirm_password' ? input.value : input.value.trim();
+                return value !== serverErrorValues[index];
+            });
+        }
+        // Avoid showing required-field errors before the first submit attempt.
+        if (registrationValidationStarted) validateForm(false);
+    };
+    registrationForm.addEventListener('input', refreshRegistrationErrors);
+    registrationForm.addEventListener('change', refreshRegistrationErrors);
     </script>
+    <?php require __DIR__ . '/includes/password-reveal.php'; ?>
 </body>
 </html>

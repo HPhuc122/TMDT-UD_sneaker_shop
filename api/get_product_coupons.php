@@ -11,14 +11,29 @@ if (!$product_id) {
 
 // Get product category
 $p_res = $conn->query("SELECT category_id FROM products WHERE id = $product_id");
+if (!$p_res) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Không thể tải thông tin sản phẩm.']);
+    exit;
+}
 $p_row = $p_res->fetch_assoc();
+if (!$p_row) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Sản phẩm không tồn tại.']);
+    exit;
+}
 $category_id = $p_row ? (int)$p_row['category_id'] : 0;
 
- $now_time = time();
+$now_time = time();
 
  // Fetch potential coupons for this product or category or all (active)
  $sql = "SELECT d.* FROM discount_codes d WHERE d.status = 'active'";
  $res = $conn->query($sql);
+ if (!$res) {
+     http_response_code(500);
+     echo json_encode(['error' => 'Không thể tải danh sách mã khuyến mãi.']);
+     exit;
+ }
  $coupons = [];
 
  while ($d = $res->fetch_assoc()) {
@@ -39,23 +54,8 @@ $category_id = $p_row ? (int)$p_row['category_id'] : 0;
 
      if (!$valid) continue;
 
-    // 2. Date and usage checks (treat start/end as full days)
-    $start_time = null;
-    $end_time = null;
-    if (!empty($d['start_date'])) {
-        $day = date('Y-m-d', strtotime($d['start_date']));
-        $start_time = strtotime($day . ' 00:00:00');
-    }
-    if (!empty($d['end_date'])) {
-        $day = date('Y-m-d', strtotime($d['end_date']));
-        $end_time = strtotime($day . ' 23:59:59');
-    }
-     $max_uses   = is_numeric($d['max_uses']) ? (int)$d['max_uses'] : null;
-     $used_count = is_numeric($d['total_used']) ? (int)$d['total_used'] : 0;
-
-     if ($start_time !== null && $now_time < $start_time) continue;
-     if ($end_time !== null && $now_time > $end_time) continue;
-     if ($max_uses !== null && $used_count >= $max_uses) continue;
+     // 2. Date and usage checks use the same exact timestamps as checkout.
+     if (!isDiscountCurrentlyValid($d, $now_time)) continue;
 
      // 3. saved state
      $d['is_saved'] = false;

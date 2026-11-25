@@ -6,7 +6,10 @@ $msg = '';
 // TOGGLE STATUS
 if (isset($_GET['toggle_status'])) {
     $id = (int)$_GET['toggle_status'];
-    $conn->query("UPDATE discount_codes SET status = IF(status='active', 'inactive', 'active') WHERE id=$id");
+    $discount = $conn->query("SELECT * FROM discount_codes WHERE id=$id")->fetch_assoc();
+    if ($discount && !isDiscountExpired($discount)) {
+        $conn->query("UPDATE discount_codes SET status = IF(status='active', 'inactive', 'active') WHERE id=$id");
+    }
     redirect('discounts.php');
 }
 
@@ -17,7 +20,8 @@ if (isset($_GET['delete'])) {
     // Kiểm tra xem mã đã được sử dụng chưa
     $check_usage = $conn->query("SELECT total_used FROM discount_codes WHERE id=$id")->fetch_assoc();
     
-    if ($check_usage && $check_usage['total_used'] > 0) {
+    $discount = $conn->query("SELECT * FROM discount_codes WHERE id=$id")->fetch_assoc();
+    if ($discount && !isDiscountExpired($discount) && $check_usage && $check_usage['total_used'] > 0) {
         $msg = '<div class="alert alert-warning shadow-sm"><i class="bi bi-exclamation-triangle-fill me-2"></i>Mã giảm giá này đã được sử dụng trong các đơn hàng. Để đảm bảo tính toàn vẹn dữ liệu, bạn <b>không được xóa</b> mã này mà chỉ có thể <b>Tắt</b> trạng thái để ngưng áp dụng.</div>';
     } else {
         // Delete related records first (if no cascade)
@@ -49,6 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if (!$code || $value <= 0) {
         $msg = '<div class="alert alert-danger">Vui lòng nhập mã code và giá trị giảm hợp lệ.</div>';
+    } elseif ($type === 'percentage' && $value > 100) {
+        $msg = '<div class="alert alert-danger">Phần trăm giảm phải lớn hơn 0 và không được vượt quá 100%.</div>';
     } elseif ($max_discount !== 'NULL' && (float)$_POST['max_discount_amount'] < 0) {
         $msg = '<div class="alert alert-danger">Số tiền giảm tối đa không được nhỏ hơn 0.</div>';
     } elseif ($max_uses !== 'NULL' && $max_uses < 1) {
@@ -141,7 +147,7 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-semibold small">Giá trị giảm <span class="text-danger">*</span></label>
-                            <input type="number" name="discount_value" class="form-control" required min="1">
+                            <input type="number" name="discount_value" id="discountValue" class="form-control" required min="1" step="any">
                         </div>
                     </div>
 
@@ -227,8 +233,8 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                             <th>Giá trị</th>
                             <th>Phạm vi</th>
                             <th class="text-center">Đã dùng</th>
+                            <th class="text-center">Còn hạn</th>
                             <th class="text-center">TT</th>
-                            <th class="text-center">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -236,6 +242,7 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                             <tr><td colspan="7" class="text-center py-4 text-muted">Chưa có mã giảm giá nào.</td></tr>
                         <?php endif; ?>
                         <?php while ($d = $discounts->fetch_assoc()): ?>
+                        <?php $is_expired = isDiscountExpired($d); ?>
                         <tr>
                             <td><strong class="text-primary"><?= htmlspecialchars($d['code']) ?></strong></td>
                             <td><?= $d['discount_type'] === 'percentage' ? 'Giảm %' : 'Giảm tiền' ?></td>
@@ -256,18 +263,21 @@ $all_products = $conn->query("SELECT id, name, code FROM products WHERE status='
                                 <?= $d['total_used'] ?> / <?= $d['max_uses'] ?? '∞' ?>
                             </td>
                             <td class="text-center">
-                                <a href="discounts.php?toggle_status=<?= $d['id'] ?>" class="text-decoration-none">
-                                    <span class="badge bg-<?= $d['status'] == 'active' ? 'success' : 'secondary' ?>">
-                                        <?= $d['status'] == 'active' ? 'Bật' : 'Tắt' ?>
-                                    </span>
-                                </a>
+                                <span class="badge bg-<?= $is_expired ? 'danger' : 'success' ?>">
+                                    <?= $is_expired ? 'Hết' : 'Còn' ?>
+                                </span>
                             </td>
                             <td class="text-center">
-                                <a href="discounts.php?toggle_status=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary" title="Đổi trạng thái">
-                                    <i class="bi bi-power"></i>
-                                </a>
-                                <a href="discounts.php?delete=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger" title="Xóa mã" onclick="return confirm('Bạn có chắc chắn muốn xóa mã giảm giá này? Toàn bộ dữ liệu liên quan sẽ bị mất.');">
-                                    <i class="bi bi-trash"></i>
+                                <span class="badge bg-<?= $d['status'] == 'active' ? 'success' : 'secondary' ?>">
+                                    <?= $d['status'] == 'active' ? 'Bật' : 'Tắt' ?>
+                                </span>
+                                <?php if (!$is_expired): ?>
+                                    <a href="discounts.php?toggle_status=<?= $d['id'] ?>" class="text-decoration-none" title="Đổi trạng thái">
+                                        <i class="bi bi-power text-primary ms-2"></i>
+                                    </a>
+                                <?php endif; ?>
+                                <a href="discounts.php?delete=<?= $d['id'] ?>" class="text-decoration-none" title="Xóa mã" onclick="return confirm('Bạn có chắc chắn muốn xóa mã giảm giá này? Toàn bộ dữ liệu liên quan sẽ bị mất.');">
+                                    <i class="bi bi-trash text-danger ms-2"></i>
                                 </a>
                             </td>
                         </tr>
@@ -286,6 +296,8 @@ function toggleScope(val) {
 }
 function toggleMaxDiscount(val) {
     document.getElementById('maxDiscountArea').style.display = (val === 'percentage' ? 'block' : 'none');
+    const discountValue = document.getElementById('discountValue');
+    discountValue.max = val === 'percentage' ? '100' : '';
 }
 </script>
 

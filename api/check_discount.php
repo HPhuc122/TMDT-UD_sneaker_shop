@@ -34,18 +34,10 @@ if (!$discount) {
     exit;
 }
 
-// 1. Check Dates (treat start/end as full days)
+// 1. Check dates and global usage using the shared validity rules.
 $now_ts = time();
-$start_ts = null;
-$end_ts = null;
-if (!empty($discount['start_date'])) {
-    $day = date('Y-m-d', strtotime($discount['start_date']));
-    $start_ts = strtotime($day . ' 00:00:00');
-}
-if (!empty($discount['end_date'])) {
-    $day = date('Y-m-d', strtotime($discount['end_date']));
-    $end_ts = strtotime($day . ' 23:59:59');
-}
+$start_ts = discountDateTimestamp($discount['start_date']);
+$end_ts = discountDateTimestamp($discount['end_date']);
 if ($start_ts !== null && $now_ts < $start_ts) {
     echo json_encode(['success' => false, 'message' => 'Mã giảm giá chưa đến thời gian sử dụng.']);
     exit;
@@ -56,7 +48,7 @@ if ($end_ts !== null && $now_ts > $end_ts) {
 }
 
 // 2. Check Total Usage
-if ($discount['max_uses'] !== null && $discount['total_used'] >= $discount['max_uses']) {
+if ($discount['max_uses'] !== null && (int)$discount['total_used'] >= (int)$discount['max_uses']) {
     echo json_encode(['success' => false, 'message' => 'Mã giảm giá đã hết lượt sử dụng.']);
     exit;
 }

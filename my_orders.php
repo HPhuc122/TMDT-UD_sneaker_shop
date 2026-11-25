@@ -48,6 +48,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_action'])) {
     $order = $conn->query("SELECT id, status, payment_method FROM orders WHERE id=$orderId AND user_id=$user_id LIMIT 1")->fetch_assoc();
     if (!$order) {
         $_SESSION['orders_msg'] = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Không tìm thấy đơn hàng.</div>';
+    } elseif ($action === 'cancel_order') {
+        $canCancel = ($order['payment_method'] === 'cash' && $order['status'] === 'pending')
+            || ($order['payment_method'] === 'online' && isPendingPaymentOrderStatus($conn, $order['status']));
+        if (!$canCancel) {
+            $_SESSION['orders_msg'] = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Đơn hàng này không thể huỷ ở trạng thái hiện tại.</div>';
+        } else {
+            $cancelResult = cancelOrderAndRestoreStock($conn, $orderId, $user_id);
+            $alertType = $cancelResult['success'] ? 'success' : 'danger';
+            $icon = $cancelResult['success'] ? 'check-circle' : 'exclamation-circle';
+            $_SESSION['orders_msg'] = '<div class="alert alert-' . $alertType . '"><i class="bi bi-' . $icon . ' me-2"></i>' . htmlspecialchars($cancelResult['message']) . '</div>';
+        }
     } elseif (!isPendingPaymentOrderStatus($conn, $order['status'])) {
         $_SESSION['orders_msg'] = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Chỉ đơn chờ thanh toán mới thực hiện thao tác này.</div>';
     } else {
@@ -179,6 +190,19 @@ if ($detail_id > 0) {
                                 <i class="bi bi-arrow-repeat me-2"></i>Đổi phương thức thanh toán
                             </a>
                         </div>
+                        <?php endif; ?>
+                        <?php
+                        $canCancelOrder = ($orderDetail['payment_method'] === 'cash' && $orderDetail['status'] === 'pending')
+                            || ($orderDetail['payment_method'] === 'online' && isPendingPaymentOrderStatus($conn, $orderDetail['status']));
+                        ?>
+                        <?php if ($canCancelOrder): ?>
+                        <form method="POST" class="mt-3" onsubmit="return confirm('Bạn có chắc muốn huỷ đơn hàng này không?');">
+                            <input type="hidden" name="order_id" value="<?= (int)$orderDetail['id'] ?>">
+                            <input type="hidden" name="return_id" value="<?= (int)$orderDetail['id'] ?>">
+                            <button type="submit" name="order_action" value="cancel_order" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-x-circle me-2"></i>Huỷ đơn hàng
+                            </button>
+                        </form>
                         <?php endif; ?>
                     </div>
                 </div>

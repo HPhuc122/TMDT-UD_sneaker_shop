@@ -3,12 +3,12 @@
 
 date_default_timezone_set('Asia/Ho_Chi_Minh');
 
-$vnp_TmnCode     = getenv('VNPAY_TMN_CODE') ?: "GYLFMILV";
-$vnp_HashSecret  = getenv('VNPAY_HASH_SECRET') ?: "SLBNCWQ9VZ6CRMGW62JRR2CZBJH49BYR";
+$vnp_TmnCode     = getenv('VNPAY_TMN_CODE') ?: "PS2M08NQ";
+$vnp_HashSecret  = getenv('VNPAY_HASH_SECRET') ?: "GDTWIAYNPVRVNPGMAOGSGQVNZRHODRJX";
 $vnp_Url         = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
 
-// Lấy base URL từ môi trường (Ví dụ: https://my-app.railway.app)
-$app_url = getenv('APP_URL') ?: (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]";
+// Lấy base URL từ môi trường; URL local bao gồm thư mục project trên XAMPP.
+$app_url = getenv('APP_URL') ?: 'https://uninfusive-audry-reptilelike.ngrok-free.dev/ktpm-sang-thu5';
 
 $vnp_Returnurl   = $app_url . "/vnpay/vnpay_return.php";
 $vnp_IpnUrl      = $app_url . "/vnpay/vnpay_ipn.php";
