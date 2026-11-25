@@ -1,0 +1,1273 @@
+{
+  "info": {
+    "name": "Sneaker Shop - Test API Quản lý người dùng",
+    "description": "Bộ kiểm thử Postman chức năng quản lý người dùng của Sneaker Shop. Chạy theo thứ tự: 0. Setup → 1. GET → 2. POST → 3. PUT → 4. DELETE. Lưu ý: admin/users.php là trang HTML, không phải REST API. GET dùng để đọc/lọc và khóa/mở khóa; POST hỗ trợ thêm/sửa/đặt lại mật khẩu. Source hiện chưa xử lý PUT hoặc DELETE; các request này kiểm tra rằng dữ liệu không bị thay đổi. Xem file TestCases_User_API.xlsx để biết test data, SQL và kết quả mong đợi.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const cv = pm.collectionVariables;",
+          "if (pm.info.requestName.indexOf('[S1]') === 0 || !cv.get('run_id')) {",
+          "  cv.set('run_id', String(Date.now()).slice(-8));",
+          "}",
+          "const r = cv.get('run_id');",
+          "cv.set('user_name', 'pm_user_' + r);",
+          "cv.set('user_email', 'pm_user_' + r + '@example.com');",
+          "cv.set('user_full_name', 'Postman Test ' + r);",
+          "cv.set('user_full_name_updated', 'Postman Updated ' + r);",
+          "cv.set('put_user_name', 'put_user_' + r);",
+          "cv.set('unauth_user_name', 'unauth_user_' + r);",
+          "cv.set('user_id', cv.get('user_id') || '');",
+          "cv.set('seed_customer_id', '2');",
+          "cv.set('seed_admin_id', '1');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/sneaker_shop"
+    },
+    {
+      "key": "admin_user",
+      "value": "admin"
+    },
+    {
+      "key": "admin_pass",
+      "value": "password"
+    },
+    {
+      "key": "run_id",
+      "value": ""
+    },
+    {
+      "key": "user_name",
+      "value": ""
+    },
+    {
+      "key": "user_email",
+      "value": ""
+    },
+    {
+      "key": "user_full_name",
+      "value": ""
+    },
+    {
+      "key": "user_full_name_updated",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "seed_customer_id",
+      "value": "2"
+    },
+    {
+      "key": "seed_admin_id",
+      "value": "1"
+    },
+    {
+      "key": "put_user_name",
+      "value": ""
+    },
+    {
+      "key": "unauth_user_name",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup (chuẩn bị phiên Admin)",
+      "item": [
+        {
+          "name": "[S1] Admin login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/login.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "login.php"
+              ]
+            },
+            "description": "Đăng nhập Admin. Postman lưu cookie sneaker_admin_sess trong Cookie Jar.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{admin_user}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_pass}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin login trả về 302', () => pm.response.to.have.status(302));",
+                  "pm.test('Chuyển hướng đến admin/index.php', () => pm.expect(pm.response.headers.get('Location') || '').to.include('index.php'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. GET (đọc và lọc dữ liệu)",
+      "item": [
+        {
+          "name": "TC-GET-01 | Admin xem danh sách tài khoản",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: dữ liệu seed admin id=1 và customer id=2. Steps: gửi GET và kiểm tra nội dung HTML danh sách."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('HTTP 200 và hiển thị danh sách', () => { pm.response.to.have.status(200); pm.expect(body).to.include('Danh sách tài khoản'); });",
+                  "pm.test('Có tài khoản seed Admin và khách hàng', () => { pm.expect(body).to.include('admin'); pm.expect(body).to.include('nguyenvana'); pm.expect(body).to.include('vana@email.com'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-GET-02 | Lọc chỉ tài khoản khách hàng",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?role=customer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "customer"
+                }
+              ]
+            },
+            "description": "Test data: role=customer. Steps: gửi GET với query role=customer; đối chiếu tài khoản khách hàng và Admin."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('HTTP 200 và có khách hàng', () => { pm.response.to.have.status(200); pm.expect(body).to.include('nguyenvana'); });",
+                  "pm.test('Không hiển thị tài khoản Admin trong kết quả lọc', () => pm.expect(body).to.not.include('admin@sneakershop.vn'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-GET-03 | Lọc chỉ tài khoản Admin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?role=admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "admin"
+                }
+              ]
+            },
+            "description": "Test data: role=admin. Steps: gửi GET với query role=admin; kiểm tra kết quả không chứa khách hàng."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('HTTP 200 và tìm thấy Admin', () => { pm.response.to.have.status(200); pm.expect(body).to.include('admin@sneakershop.vn'); });",
+                  "pm.test('Không hiển thị khách hàng trong kết quả lọc', () => pm.expect(body).to.not.include('vana@email.com'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-GET-04 | Tìm tài khoản theo username",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?q=nguyenvana",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "nguyenvana"
+                }
+              ]
+            },
+            "description": "Test data: q=nguyenvana. Steps: gửi GET tìm kiếm và so sánh với tài khoản không khớp."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('HTTP 200 và có tài khoản khớp', () => { pm.response.to.have.status(200); pm.expect(body).to.include('nguyenvana'); });",
+                  "pm.test('Không hiển thị tài khoản không khớp', () => pm.expect(body).to.not.include('thib@email.com'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-GET-05 | Tìm kiếm không có kết quả",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?q=__no_such_user_928374__",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "__no_such_user_928374__"
+                }
+              ]
+            },
+            "description": "Test data: username tìm kiếm không tồn tại. Steps: gửi GET; kiểm tra thông báo danh sách rỗng."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('HTTP 200 và thông báo không tìm thấy', () => { pm.response.to.have.status(200); pm.expect(body).to.include('Không tìm thấy tài khoản nào.'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. POST (thêm / sửa / đặt lại mật khẩu)",
+      "item": [
+        {
+          "name": "TC-POST-01 | Thêm tài khoản khách hàng hợp lệ",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: username/email sinh theo run_id; password Secret123; role customer. Steps: gửi form và lưu ID tài khoản từ HTML để dùng ở các test tiếp theo.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{user_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Secret123",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "{{user_full_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{user_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "0900000000",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "Địa chỉ kiểm thử",
+                  "type": "text"
+                },
+                {
+                  "key": "ward",
+                  "value": "Phường 1",
+                  "type": "text"
+                },
+                {
+                  "key": "district",
+                  "value": "Quận 1",
+                  "type": "text"
+                },
+                {
+                  "key": "city",
+                  "value": "TP.HCM",
+                  "type": "text"
+                },
+                {
+                  "key": "role",
+                  "value": "customer",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "const username = pm.collectionVariables.get('user_name');",
+                  "const marker = 'Sửa thông tin: ' + username;",
+                  "const markerIndex = body.indexOf(marker);",
+                  "pm.test('Tạo tài khoản thành công', () => { pm.response.to.have.status(200); pm.expect(body).to.include('Đã thêm tài khoản'); pm.expect(body).to.include(username); });",
+                  "pm.test('Lấy được ID tài khoản vừa tạo cho các test tiếp theo', () => {",
+                  "  pm.expect(markerIndex).to.be.above(-1);",
+                  "  const matches = body.slice(0, markerIndex).match(/id=\"editModal\\d+\"/g) || [];",
+                  "  pm.expect(matches.length).to.be.above(0);",
+                  "  const id = matches[matches.length - 1].match(/\\d+/)[0];",
+                  "  pm.collectionVariables.set('user_id', id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-02 | Từ chối username trùng",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: dùng lại username đã tạo ở TC-POST-01. Steps: gửi lại form với cùng username; kiểm tra thông báo và CSDL chỉ có một bản ghi.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{user_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Secret123",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Tên bị trùng",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "duplicate-{{run_id}}@example.com",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('Từ chối username trùng', () => { pm.response.to.have.status(200); pm.expect(body).to.include('Tên đăng nhập đã tồn tại.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-03 | Từ chối khi thiếu họ tên bắt buộc",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: username/password hợp lệ nhưng full_name rỗng. Steps: gửi POST bỏ qua kiểm tra required ở trình duyệt; kiểm tra thông báo validation.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "missing_name_{{run_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Secret123",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Báo thiếu thông tin bắt buộc', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Vui lòng nhập đầy đủ thông tin bắt buộc.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-04 | Từ chối mật khẩu ngắn hơn 6 ký tự",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: username mới, full_name hợp lệ, password=12345. Steps: gửi POST và kiểm tra lỗi độ dài mật khẩu.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "short_pass_{{run_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "12345",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Tên kiểm thử",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Báo mật khẩu phải có ít nhất 6 ký tự', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Mật khẩu phải có ít nhất 6 ký tự.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-05 | Sửa thông tin tài khoản, giữ nguyên role",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: user_id lấy từ TC-POST-01; họ tên/email mới. Steps: gửi action=edit_user; kiểm tra thông tin cập nhật và role vẫn là customer.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "edit_user",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "{{user_full_name_updated}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "updated-{{run_id}}@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "0901111111",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "Địa chỉ mới",
+                  "type": "text"
+                },
+                {
+                  "key": "ward",
+                  "value": "Phường mới",
+                  "type": "text"
+                },
+                {
+                  "key": "district",
+                  "value": "Quận mới",
+                  "type": "text"
+                },
+                {
+                  "key": "city",
+                  "value": "TP.HCM",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('Cập nhật thông tin thành công', () => { pm.response.to.have.status(200); pm.expect(body).to.include('Đã cập nhật thông tin người dùng.'); pm.expect(body).to.include(pm.collectionVariables.get('user_full_name_updated')); });",
+                  "pm.test('Tài khoản vẫn là khách hàng', () => pm.expect(body).to.include('Khách hàng'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-06 | Từ chối sửa user_id không tồn tại",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: user_id=999999. Steps: gửi action=edit_user; kiểm tra thông báo tài khoản không tồn tại.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "edit_user",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "999999",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Không tồn tại",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Báo tài khoản không tồn tại', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Tài khoản không tồn tại.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-07 | Đặt lại mật khẩu hợp lệ",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: user_id tạo ở TC-POST-01; new_password=NewSecret123. Steps: gửi action=reset_password; kiểm tra thông báo và SQL hash trong sheet Chuẩn bị & SQL.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "reset_password",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "new_password",
+                  "value": "NewSecret123",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đặt lại mật khẩu thành công', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Đã đặt lại mật khẩu.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-POST-08 | Từ chối mật khẩu đặt lại quá ngắn",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: user_id tạo ở TC-POST-01; new_password=123. Steps: gửi action=reset_password; kiểm tra validation.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "reset_password",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "new_password",
+                  "value": "123",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Báo mật khẩu tối thiểu 6 ký tự', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Mật khẩu phải ít nhất 6 ký tự.'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S2] Admin logout trước test phân quyền",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/login.php?action=logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "login.php"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "logout"
+                }
+              ]
+            },
+            "description": "Đăng xuất để kiểm thử request POST không có quyền Admin."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "TC-POST-09 | Không cho thêm tài khoản khi chưa đăng nhập Admin",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: không có cookie Admin; username sinh theo run_id. Steps: sau logout gửi action=add; kiểm tra chuyển hướng đăng nhập và xác nhận không tạo record bằng SQL.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{unauth_user_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Secret123",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Không được tạo",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chuyển hướng về trang Admin login', () => { pm.response.to.have.status(302); pm.expect(pm.response.headers.get('Location') || '').to.include('login.php'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "[S3] Admin login lại sau test phân quyền",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/login.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "login.php"
+              ]
+            },
+            "description": "Đăng nhập lại để chạy các test PUT và DELETE có quyền Admin.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{admin_user}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_pass}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin đăng nhập lại thành công', () => { pm.response.to.have.status(302); pm.expect(pm.response.headers.get('Location') || '').to.include('index.php'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. PUT (kiểm tra cập nhật bằng PUT)",
+      "item": [
+        {
+          "name": "TC-PUT-01 | PUT sửa thông tin không làm thay đổi tài khoản",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: user_id tạo ở TC-POST-01; full_name cố tình đổi sang PUT Modified. Source chỉ xử lý action khi method=POST. Kết quả hiện tại mong đợi: trang trả 200 nhưng tên vẫn giữ giá trị sau TC-POST-05.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "edit_user",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "PUT Modified",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('PUT hiện chưa có handler và không cập nhật tên', () => { pm.response.to.have.status(200); pm.expect(body).to.include(pm.collectionVariables.get('user_full_name_updated')); pm.expect(body).to.not.include('PUT Modified'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-PUT-02 | PUT tạo tài khoản không được xử lý",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: action=add và username mới. Kết quả hiện tại mong đợi: không có thông báo tạo thành công; kiểm tra SQL không có username này.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "add",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{put_user_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Secret123",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Không được tạo bởi PUT",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('PUT không tạo tài khoản', () => { pm.response.to.have.status(200); pm.expect(body).to.not.include('Đã thêm tài khoản'); pm.expect(body).to.not.include(pm.collectionVariables.get('put_user_name')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-PUT-03 | PUT đặt lại mật khẩu không được xử lý",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ]
+            },
+            "description": "Test data: action=reset_password, user_id tạo ở POST, mật khẩu mới khác mật khẩu hiện tại. Kết quả hiện tại mong đợi: không có thông báo đặt lại mật khẩu; dùng SQL xác nhận hash không đổi nếu cần.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "reset_password",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "new_password",
+                  "value": "PutSecret123",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('PUT không đặt lại mật khẩu', () => { pm.response.to.have.status(200); pm.expect(body).to.not.include('Đã đặt lại mật khẩu.'); pm.expect(body).to.include(pm.collectionVariables.get('user_full_name_updated')); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. DELETE (kiểm tra xóa tài khoản)",
+      "item": [
+        {
+          "name": "TC-DEL-01 | DELETE khách hàng seed không xóa dữ liệu",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?user_id={{seed_customer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{seed_customer_id}}"
+                }
+              ]
+            },
+            "description": "Test data: seed customer id=2. Body action=delete. Source không có handler DELETE. Kết quả hiện tại mong đợi: HTTP 200 và tài khoản vẫn xuất hiện; xác nhận bản ghi còn trong DB.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "delete",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{seed_customer_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('DELETE hiện chưa có handler, customer vẫn tồn tại', () => { pm.response.to.have.status(200); pm.expect(body).to.include('nguyenvana'); pm.expect(body).to.include('vana@email.com'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-DEL-02 | DELETE user vừa tạo không xóa dữ liệu",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
+            },
+            "description": "Test data: user_id được tạo ở TC-POST-01. Body action=delete. Kết quả hiện tại mong đợi: người dùng vẫn hiển thị sau DELETE.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "delete",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('DELETE không xóa user vừa tạo', () => { pm.response.to.have.status(200); pm.expect(body).to.include(pm.collectionVariables.get('user_name')); pm.expect(body).to.include(pm.collectionVariables.get('user_full_name_updated')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-DEL-03 | DELETE Admin không xóa tài khoản quản trị",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users.php?user_id={{seed_admin_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users.php"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{seed_admin_id}}"
+                }
+              ]
+            },
+            "description": "Test data: seed Admin id=1. Body action=delete. Kết quả hiện tại mong đợi: Admin vẫn còn trong danh sách và CSDL.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "action",
+                  "value": "delete",
+                  "type": "text"
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{seed_admin_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('DELETE không xóa tài khoản Admin', () => { pm.response.to.have.status(200); pm.expect(body).to.include('admin@sneakershop.vn'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
