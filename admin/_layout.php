@@ -47,6 +47,7 @@ HTML;
         ['index.php',       'bi-speedometer2', 'Dashboard'],
         ['products.php',    'bi-box-seam',      'Sản phẩm'],
         ['categories.php',  'bi-grid',          'Danh mục'],
+        ['attributes.php',  'bi-sliders',       'Thuộc tính (Size/Màu)'],
         ['imports.php',     'bi-truck',         'Nhập hàng'],
         ['orders.php',      'bi-bag-check',     'Đơn hàng'],
         ['discounts.php',   'bi-ticket-perforated', 'Mã giảm giá'],

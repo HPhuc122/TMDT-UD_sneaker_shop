@@ -108,20 +108,34 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                     <input class="form-control form-control-sm me-2" type="search" name="q" placeholder="Tìm sneaker..." style="width:200px">
                     <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-search"></i></button>
                 </form>
+                <?php
+                $cartCount = 0;
+                if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
+                    foreach ($_SESSION['cart'] as $item) {
+                        $cartCount += (int)($item['qty'] ?? 1);
+                    }
+                }
+                ?>
                 <ul class="navbar-nav align-items-center">
+                    <li class="nav-item me-3">
+                        <a class="nav-link px-2 position-relative" href="cart.php" title="Giỏ hàng">
+                            <i class="bi bi-cart3 fs-5" style="vertical-align:middle"></i>
+                            <?php if ($cartCount > 0): ?>
+                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem">
+                                    <?= $cartCount ?>
+                                </span>
+                            <?php endif; ?>
+                        </a>
+                    </li>
                     <?php if (isLoggedIn()): ?>
-                        <li class="nav-item">
-                            <a class="nav-link px-2" href="cart.php" style="line-height:1">
-                                <i class="bi bi-cart3 fs-5" style="vertical-align:middle"></i>
-                            </a>
-                        </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" href="#" data-bs-toggle="dropdown">
-                                <i class="bi bi-person-circle fs-5"></i>
-                                <span><?= htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']) ?></span>
+                                <i class="bi bi-person-circle fs-5 text-primary"></i>
+                                <span class="fw-semibold"><?= htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']) ?></span>
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="my_orders.php"><i class="bi bi-bag-check me-2"></i>Đơn hàng của tôi</a></li>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person-gear me-2 text-primary"></i>Thông tin tài khoản</a></li>
+                                <li><a class="dropdown-item" href="my_orders.php"><i class="bi bi-bag-check me-2 text-primary"></i>Đơn hàng của tôi</a></li>
                                 <li>
                                     <hr class="dropdown-divider">
                                 </li>
@@ -129,13 +143,13 @@ $cats = $conn->query("SELECT * FROM categories ORDER BY name");
                             </ul>
                         </li>
                     <?php else: ?>
-                        <li class="nav-item">
+                        <li class="nav-item me-2">
                             <a class="nav-link d-flex align-items-center" href="login.php">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Đăng nhập
                             </a>
                         </li>
                         <li class="nav-item d-flex align-items-center">
-                            <a class="btn btn-primary btn-sm px-3" href="register.php">Đăng ký</a>
+                            <a class="btn btn-primary btn-sm px-3 rounded-pill" href="register.php">Đăng ký</a>
                         </li>
                     <?php endif; ?>
                 </ul>

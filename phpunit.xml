@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Cấu hình PHPUnit cho đồ án SneakerShop.
+    <testsuites> tương ứng với @RunWith(Suite.class) + @SuiteClasses của JUnit:
+    mỗi thành viên phụ trách một testsuite (Part1..Part4).
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheResultFile=".phpunit.result.cache"
+         executionOrder="default"
+         beStrictAboutOutputDuringTests="true"
+         failOnRisky="true"
+         failOnWarning="true">
+
+    <testsuites>
+        <testsuite name="Part1">
+            <directory suffix="Test.php">tests/Part1_TaiKhoan_DuyetSanPham</directory>
+        </testsuite>
+        <testsuite name="Part2">
+            <directory suffix="Test.php">tests/Part2_GioHang_KhuyenMai</directory>
+        </testsuite>
+        <testsuite name="Part3">
+            <directory suffix="Test.php">tests/Part3_QuanTri_Kho_DonHang</directory>
+        </testsuite>
+        <testsuite name="Part4">
+            <directory suffix="Test.php">tests/Part4_DatHang_ThanhToan</directory>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <!-- CSDL dành riêng cho test: TUYỆT ĐỐI không trỏ vào database thật (tên phải kết thúc bằng _test) -->
+        <env name="DB_HOST" value="localhost"/>
+        <env name="DB_USER" value="root"/>
+        <env name="DB_PASS" value=""/>
+        <env name="DB_NAME" value="sneaker_shop_test" force="true"/>
+        <!-- Địa chỉ website khi chạy test HTTP (composer serve) -->
+        <env name="APP_TEST_URL" value="http://localhost:8000"/>
+    </php>
+
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">includes</directory>
+            <directory suffix=".php">api</directory>
+            <directory suffix=".php">admin</directory>
+            <directory suffix=".php">vnpay</directory>
+            <directory suffix=".php">zalo_pay</directory>
+        </include>
+    </coverage>
+</phpunit>

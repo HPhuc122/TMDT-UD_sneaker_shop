@@ -4,22 +4,52 @@ require_once '_layout.php';
 adminHeader('Quản lý danh mục');
 
 $msg = '';
-// Add
+// Validate both creation and editing before writing.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $name = sanitize($conn, $_POST['name'] ?? '');
-    $desc = sanitize($conn, $_POST['description'] ?? '');
-    if ($_POST['action'] === 'add') {
-        if (!$name) {
-            $msg = '<div class="alert alert-danger">Vui lòng nhập tên danh mục.</div>';
-        } else {
-            $conn->query("INSERT INTO categories (name, description) VALUES ('$name','$desc')");
-            $msg = '<div class="alert alert-success">Đã thêm danh mục thành công.</div>';
+    $action = $_POST['action'];
+    $name = is_string($_POST['name'] ?? null) ? trim($_POST['name']) : '';
+    $desc = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
+    $id = (int)($_POST['id'] ?? 0);
+    $error = '';
+    if (!in_array($action, ['add', 'edit'], true)) {
+        $error = 'Thao tác không hợp lệ.';
+    } elseif ($name === '' || preg_match('/^\s*$/u', $name)) {
+        $error = 'Vui lòng nhập tên danh mục.';
+    } elseif (mb_strlen($name, 'UTF-8') > 100) {
+        $error = 'Tên danh mục không được vượt quá 100 ký tự.';
+    } else {
+        try {
+            if ($action === 'edit') {
+                $existing = $conn->prepare('SELECT id FROM categories WHERE id=?');
+                $existing->bind_param('i', $id);
+                $existing->execute();
+                if (!$existing->get_result()->fetch_assoc()) $error = 'Không tìm thấy danh mục.';
+            }
+            $excludeId = $action === 'edit' ? $id : 0;
+            $check = $conn->prepare('SELECT id FROM categories WHERE name=? AND id<>? LIMIT 1');
+            $check->bind_param('si', $name, $excludeId);
+            $check->execute();
+            if ($check->get_result()->fetch_assoc()) $error = 'Tên danh mục đã tồn tại.';
+            if ($error === '') {
+                if ($action === 'add') {
+                    $save = $conn->prepare('INSERT INTO categories (name, description) VALUES (?,?)');
+                    $save->bind_param('ss', $name, $desc);
+                } else {
+                    $save = $conn->prepare('UPDATE categories SET name=?, description=? WHERE id=?');
+                    $save->bind_param('ssi', $name, $desc, $id);
+                }
+                if ($save->execute()) {
+                    $msg = '<div class="alert alert-success">' . ($action === 'add' ? 'Đã thêm danh mục thành công.' : 'Đã cập nhật danh mục.') . '</div>';
+                } else {
+                    $error = 'Không thể lưu danh mục. Vui lòng thử lại.';
+                }
+            }
+        } catch (mysqli_sql_exception $e) {
+            error_log($e->getMessage());
+            $error = 'Không thể lưu danh mục. Vui lòng thử lại.';
         }
-    } elseif ($_POST['action'] === 'edit') {
-        $id = (int)$_POST['id'];
-        $conn->query("UPDATE categories SET name='$name', description='$desc' WHERE id=$id");
-        $msg = '<div class="alert alert-success">Đã cập nhật danh mục.</div>';
     }
+    if ($error !== '') $msg = '<div class="alert alert-danger">' . htmlspecialchars($error) . '</div>';
 }
 // Delete
 if (isset($_GET['delete'])) {

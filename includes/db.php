@@ -5,6 +5,8 @@ define('DB_USER', getenv('DB_USER') ?: 'root');
 define('DB_PASS', getenv('DB_PASS') ?: '');
 define('DB_NAME', getenv('DB_NAME') ?: 'sneaker_shop');
 
+date_default_timezone_set('Asia/Ho_Chi_Minh');
+
 // Session names - admin uses separate cookie to allow simultaneous login
 if (!defined('USER_SESSION_NAME')) {
     define('USER_SESSION_NAME', 'sneaker_user_sess');
@@ -32,6 +34,9 @@ function getSellPrice($import_price, $profit_rate) {
 function formatPrice($price) {
     return number_format($price, 0, ',', '.') . ' ₫';
 }
+
+require_once __DIR__ . '/discount_helpers.php';
+require_once __DIR__ . '/cart_helpers.php';
 
 function isLoggedIn() {
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -119,6 +124,66 @@ function getOnlinePendingStatus($conn) {
 
 function isPendingPaymentOrderStatus($conn, $status) {
     return in_array($status, getPendingPaymentStatuses($conn), true);
+}
+
+function cancelOrderAndRestoreStock($conn, $orderId, $userId = null) {
+    $orderId = (int)$orderId;
+    $ownerSql = $userId === null ? '' : ' AND user_id=' . (int)$userId;
+
+    try {
+        $conn->begin_transaction();
+        $orderResult = $conn->query("SELECT id, status FROM orders WHERE id=$orderId$ownerSql LIMIT 1 FOR UPDATE");
+        if (!$orderResult || $orderResult->num_rows === 0) {
+            throw new RuntimeException('Không tìm thấy đơn hàng.');
+        }
+
+        $order = $orderResult->fetch_assoc();
+        if ($order['status'] === 'cancelled') {
+            throw new RuntimeException('Đơn hàng đã được huỷ trước đó.');
+        }
+
+        if (!$conn->query("UPDATE orders SET status='cancelled' WHERE id=$orderId")) {
+            throw new RuntimeException('Không thể cập nhật trạng thái đơn hàng.');
+        }
+
+        $details = $conn->query("SELECT product_id, size_id, color_id, quantity FROM order_details WHERE order_id=$orderId");
+        if (!$details) {
+            throw new RuntimeException('Không thể đọc chi tiết đơn hàng.');
+        }
+
+        $stockColumn = getStockColumnName($conn);
+        $hasVarietyStock = hasTableColumn($conn, 'product_varieties', 'stock_quantity');
+        while ($detail = $details->fetch_assoc()) {
+            $productId = (int)$detail['product_id'];
+            $sizeId = (int)($detail['size_id'] ?? 0);
+            $colorId = (int)($detail['color_id'] ?? 0);
+            $quantity = (int)$detail['quantity'];
+
+            if ($sizeId > 0 && $colorId > 0 && $hasVarietyStock) {
+                $stockUpdated = $conn->query(
+                    "UPDATE product_varieties SET stock_quantity = stock_quantity + $quantity " .
+                    "WHERE product_id=$productId AND size_id=$sizeId AND color_id=$colorId"
+                );
+            } elseif ($stockColumn) {
+                $stockUpdated = $conn->query(
+                    "UPDATE products SET {$stockColumn} = {$stockColumn} + $quantity WHERE id=$productId"
+                );
+            } else {
+                $stockUpdated = true;
+            }
+
+            if (!$stockUpdated) {
+                throw new RuntimeException('Không thể hoàn tồn kho.');
+            }
+        }
+
+        $conn->commit();
+        return ['success' => true, 'message' => 'Đã huỷ đơn hàng và hoàn lại tồn kho.'];
+    } catch (Throwable $e) {
+        $conn->rollback();
+        error_log('Cancel order failed: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
 }
 
 function cancelExpiredPendingOrders($conn, $limit = 100) {

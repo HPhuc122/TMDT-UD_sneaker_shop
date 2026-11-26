@@ -31,16 +31,13 @@ foreach ($cart as $item) {
     if ($p_row) $category_ids[] = (int)$p_row['category_id'];
 }
 
-$now = date('Y-m-d H:i:s');
+$now = time();
 $coupons = [];
 
 while ($d = $res->fetch_assoc()) {
     $id = $d['id'];
     
-    // Check validity
-    if ($d['start_date'] && $now < $d['start_date']) continue;
-    if ($d['end_date'] && $now > $d['end_date']) continue;
-    if ($d['max_uses'] !== null && $d['total_used'] >= $d['max_uses']) continue;
+    if (!isDiscountCurrentlyValid($d, $now)) continue;
 
     $is_applicable = false;
     $reason = "";

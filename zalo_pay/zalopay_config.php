@@ -9,12 +9,11 @@ define('ZALOPAY_KEY1',     getenv('ZALOPAY_KEY1') ?: 'PcY4iZIKFCIdgZvA6ueMcMHHUb
 define('ZALOPAY_KEY2',     getenv('ZALOPAY_KEY2') ?: 'kLtgPl8HHhfvMuDHPwKfgfsY4Vu/kms31PDP4Czfts=');
 define('ZALOPAY_ENDPOINT', 'https://sb-openapi.zalopay.vn/v2/create');
 
-// APP_URL cho Railway (VD: https://my-app.railway.app)
-define('APP_URL', getenv('APP_URL') ?: (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]");
+// URL public dùng cho redirect/callback khi chạy local qua Ngrok.
+define('APP_URL', getenv('APP_URL') ?: 'https://uninfusive-audry-reptilelike.ngrok-free.dev/ktpm-sang-thu5');
 
-// Tự động nhận diện APP_PATH (XAMPP thường dùng folder con, Render/Railway thường dùng root)
-$is_localhost = ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_ADDR'] === '127.0.0.1');
-$default_path = $is_localhost ? '/TMDT-UD_sneaker_shop/zalo_pay' : '/zalo_pay';
+// APP_URL đã chứa thư mục project; APP_PATH chỉ trỏ tới module thanh toán.
+$default_path = '/zalo_pay';
 define('APP_PATH', getenv('APP_PATH') ?: $default_path);
 
 define('ZALOPAY_RETURN_URL',   APP_URL . APP_PATH . '/zalopay_return.php');

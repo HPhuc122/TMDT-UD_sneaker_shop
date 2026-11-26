@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = sanitize($conn, $_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    $result = $conn->query("SELECT * FROM users WHERE username='$username' AND role='admin'");
+    $result = $conn->query("SELECT * FROM users WHERE (username='$username' OR email='$username') AND role='admin'");
     $user = $result->fetch_assoc();
 
     if ($user && password_verify($password, $user['password'])) {

@@ -466,10 +466,8 @@ require_once 'includes/header.php';
     function renderProductCoupons() {
         const container = document.getElementById('couponList');
         const section = document.getElementById('productCoupons');
-        const currentQty = parseInt(document.getElementById('qty')?.value || 1);
-        const currentTotal = currentQty * window.productSellPrice;
 
-        const validCoupons = window.productCoupons.filter(c => c.min_order <= currentTotal);
+        const validCoupons = window.productCoupons;
 
         if (validCoupons.length > 0) {
             section.style.display = 'block';
@@ -497,18 +495,31 @@ require_once 'includes/header.php';
                 container.appendChild(card);
             });
         } else {
-            section.style.display = 'none';
+            section.style.display = 'block';
+            container.innerHTML = '<div class="text-muted small">Hiện chưa có mã khuyến mãi áp dụng cho sản phẩm này.</div>';
         }
     }
 
     async function loadProductCoupons() {
         const pid = <?= $id ?>;
         try {
-            const res = await fetch(`api/get_product_coupons.php?product_id=${pid}`);
-            window.productCoupons = await res.json();
+            const res = await fetch(`api/get_product_coupons.php?product_id=${encodeURIComponent(pid)}`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!res.ok) {
+                throw new Error(`Coupon API returned ${res.status}`);
+            }
+            const coupons = await res.json();
+            if (!Array.isArray(coupons)) {
+                throw new Error('Coupon API returned an invalid response');
+            }
+            window.productCoupons = coupons;
             renderProductCoupons();
         } catch (err) {
             console.error('Lỗi khi tải coupon:', err);
+            document.getElementById('productCoupons').style.display = 'block';
+            document.getElementById('couponList').innerHTML =
+                '<div class="text-danger small">Không thể tải mã khuyến mãi. Vui lòng tải lại trang.</div>';
         }
     }
 

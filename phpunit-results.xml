@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="OrderCancelPolicyTest" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" tests="6" assertions="6" errors="0" failures="0" skipped="0" time="0.004203">
+    <testcase name="testCashPendingCanBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="14" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.003464"/>
+    <testcase name="testCashConfirmedCannotBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="25" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.000315"/>
+    <testcase name="testOnlinePendingPaymentCanBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="36" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.000194"/>
+    <testcase name="testOnlineAwaitingPaymentCanBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="47" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.000093"/>
+    <testcase name="testOnlineConfirmedCannotBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="58" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.000076"/>
+    <testcase name="testTransferPendingCannotBeCancelled" file="C:\xampp\htdocs\ktpm-sang-thu5\tests\OrderCancelPolicyTest.php" line="69" class="OrderCancelPolicyTest" classname="OrderCancelPolicyTest" assertions="1" time="0.000062"/>
+  </testsuite>
+</testsuites>

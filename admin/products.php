@@ -36,12 +36,13 @@ if (isset($_GET['delete'])) {
 
 // SAVE (add/edit)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $code = sanitize($conn, $_POST['code'] ?? '');
+    $code = strtoupper(trim(sanitize($conn, $_POST['code'] ?? '')));
     $name = sanitize($conn, $_POST['name'] ?? '');
     $cat_id = (int) $_POST['category_id'];
     $desc = sanitize($conn, $_POST['description'] ?? '');
     $unit = sanitize($conn, $_POST['unit'] ?? 'đôi');
     $profit_rate = (float) $_POST['profit_rate'];
+    $import_price = (float) ($_POST['import_price'] ?? 0);
     $status = sanitize($conn, $_POST['status'] ?? 'active');
     // New attribute fields
     $brand = sanitize($conn, $_POST['brand'] ?? '');
@@ -50,8 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $origin = sanitize($conn, $_POST['origin'] ?? '');
     $image = '';
 
+    // Tự động sinh mã SP nếu để trống khi Thêm mới
+    if (empty($code) && $_POST['action'] === 'add') {
+        $max_id = (int)($conn->query("SELECT MAX(id) as m FROM products")->fetch_assoc()['m'] ?? 0);
+        $code = 'SP' . str_pad($max_id + 1, 4, '0', STR_PAD_LEFT);
+    }
+
     if (!$code || !$name || !$cat_id) {
-        $msg = '<div class="alert alert-danger">Vui lòng điền đầy đủ thông tin bắt buộc.</div>';
+        $msg = '<div class="alert alert-danger">Vui lòng điền đầy đủ Tên sản phẩm và Danh mục.</div>';
     } else {
         // Handle image upload
         if (!empty($_FILES['image']['name'])) {
@@ -68,23 +75,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($_POST['action'] === 'add') {
             $check = $conn->query("SELECT id FROM products WHERE code='$code'");
             if ($check->num_rows > 0) {
-                $msg = '<div class="alert alert-danger">Mã sản phẩm đã tồn tại.</div>';
+                $msg = '<div class="alert alert-danger">Mã sản phẩm <strong>' . htmlspecialchars($code) . '</strong> đã tồn tại. Vui lòng chọn mã khác hoặc để trống để tự sinh mã.</div>';
             } else {
-                $conn->query("INSERT INTO products (code,name,category_id,description,unit,profit_rate,image,brand,gender,material,origin,status)
-                    VALUES ('$code','$name',$cat_id,'$desc','$unit',$profit_rate,'$image','$brand','$gender','$material','$origin','$status')");
+                $conn->query("INSERT INTO products (code,name,category_id,description,unit,import_price,profit_rate,image,brand,gender,material,origin,status)
+                    VALUES ('$code','$name',$cat_id,'$desc','$unit',$import_price,$profit_rate,'$image','$brand','$gender','$material','$origin','$status')");
                 $product_id = $conn->insert_id;
-                $msg = '<div class="alert alert-success">Đã thêm sản phẩm thành công.</div>';
+                $msg = '<div class="alert alert-success">Đã thêm sản phẩm <strong>[' . htmlspecialchars($code) . '] ' . htmlspecialchars($name) . '</strong> thành công. Vui lòng sang mục <a href="imports.php" class="fw-bold">Nhập hàng</a> để tạo phiếu nhập kho và mở bán.</div>';
                 $_POST = [];
             }
         } elseif ($_POST['action'] === 'edit') {
             $id = (int) $_POST['id'];
-            $img_sql = $image ? ", image='$image'" : '';
-            if (isset($_POST['remove_image']) && $_POST['remove_image'] == '1') {
-                $img_sql = ", image=''";
+            $check = $conn->query("SELECT id FROM products WHERE code='$code' AND id != $id");
+            if ($check->num_rows > 0) {
+                $msg = '<div class="alert alert-danger">Mã sản phẩm <strong>' . htmlspecialchars($code) . '</strong> đã được sử dụng bởi sản phẩm khác.</div>';
+            } else {
+                $img_sql = $image ? ", image='$image'" : '';
+                if (isset($_POST['remove_image']) && $_POST['remove_image'] == '1') {
+                    $img_sql = ", image=''";
+                }
+                $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',
+                    profit_rate=$profit_rate,status='$status',brand='$brand',gender='$gender', material='$material',origin='$origin'$img_sql WHERE id=$id");
+                $msg = '<div class="alert alert-success">Đã cập nhật sản phẩm thành công.</div>';
             }
-            $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',
-                profit_rate=$profit_rate,status='$status',brand='$brand',gender='$gender', material='$material',origin='$origin'$img_sql WHERE id=$id");
-            $msg = '<div class="alert alert-success">Đã cập nhật sản phẩm.</div>';
         }
         end_save:
         ;
@@ -98,6 +110,11 @@ if (isset($_GET['edit'])) {
 }
 
 $categories = $conn->query("SELECT * FROM categories ORDER BY name");
+$existing_product_names = [];
+$product_name_result = $conn->query("SELECT name FROM products");
+while ($product_name_row = $product_name_result->fetch_assoc()) {
+    $existing_product_names[] = $product_name_row['name'];
+}
 
 // List with filters + pagination + search
 $filter_cat = isset($_GET['cat']) ? (int) $_GET['cat'] : 0;
@@ -265,15 +282,15 @@ $params_p = array_filter(['q' => $search_p, 'cat' => $filter_cat, 'status' => $f
         <div class="card border-0 shadow-sm">
             <div class="card-header fw-bold bg-white border-0"><i class="bi bi-plus me-2"></i>Thêm sản phẩm</div>
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" onsubmit="return confirmDuplicateProductName(this)">
                     <input type="hidden" name="action" value="add">
 
                     <h6 class="text-muted fw-bold mb-3 small">THÔNG TIN CƠ BẢN</h6>
                     <div class="row g-3 mb-3">
                         <div class="col-md-2">
-                            <label class="form-label">Mã SP <span class="text-danger">*</span></label>
+                            <label class="form-label">Mã SP <small class="text-muted">(Tự động)</small></label>
                             <input type="text" name="code" class="form-control"
-                                value="<?= htmlspecialchars($_POST['code'] ?? '') ?>" required>
+                                placeholder="Để trống để tự sinh mã" value="<?= htmlspecialchars($_POST['code'] ?? '') ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
@@ -344,6 +361,21 @@ $params_p = array_filter(['q' => $search_p, 'cat' => $filter_cat, 'status' => $f
         </div>
     </div>
 <?php endif; ?>
+
+<script>
+    const existingProductNames = <?= json_encode($existing_product_names, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+    function confirmDuplicateProductName(form) {
+        const productName = form.elements.name.value.trim().toLocaleLowerCase();
+        const isDuplicate = existingProductNames.some(name => name.trim().toLocaleLowerCase() === productName);
+
+        if (!isDuplicate) {
+            return true;
+        }
+
+        return window.confirm('Tên sản phẩm này đã tồn tại. Bạn vẫn muốn thêm sản phẩm?');
+    }
+</script>
 
 <!-- Filters + List -->
 <div class="card border-0 shadow-sm">
