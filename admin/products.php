@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $img_sql = ", image=''";
                 }
                 $conn->query("UPDATE products SET code='$code',name='$name',category_id=$cat_id,description='$desc',unit='$unit',
-                    import_price=$import_price,profit_rate=$profit_rate,status='$status',brand='$brand',gender='$gender', material='$material',origin='$origin'$img_sql WHERE id=$id");
+                    profit_rate=$profit_rate,status='$status',brand='$brand',gender='$gender', material='$material',origin='$origin'$img_sql WHERE id=$id");
                 $msg = '<div class="alert alert-success">Đã cập nhật sản phẩm thành công.</div>';
             }
         }
@@ -245,11 +245,6 @@ $params_p = array_filter(['q' => $search_p, 'cat' => $filter_cat, 'status' => $f
                         <label class="form-label">Đơn vị</label>
                         <input type="text" name="unit" class="form-control"
                             value="<?= htmlspecialchars($edit_p['unit']) ?>">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Giá vốn (₫)</label>
-                        <input type="number" name="import_price" class="form-control"
-                            value="<?= $edit_p['import_price'] ?>" step="1000" min="0">
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">% Lợi nhuận</label>

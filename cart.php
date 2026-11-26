@@ -51,8 +51,7 @@ if (isset($_GET['msg'])) {
 }
 
 $cart  = $_SESSION['cart'] ?? [];
-$total = 0;
-foreach ($cart as $item) $total += $item['price'] * $item['qty'];
+$total = calculateCartTotal($cart);
 
 $pageTitle = 'Giỏ hàng';
 require_once 'includes/header.php';

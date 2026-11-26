@@ -9,6 +9,7 @@
     },
     "require-dev": {
         "ext-curl": "*",
+        "php-webdriver/webdriver": "^1.16",
         "phpunit/phpunit": "^9.6"
     },
     "autoload-dev": {
